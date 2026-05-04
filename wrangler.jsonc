@@ -37,12 +37,6 @@
 			"database_name": "is-safe-store",
 			"database_id": "315493cb-2f6e-4176-a97d-25b0d4f86ee5",
 			"preview_database_id": "315493cb-2f6e-4176-a97d-25b0d4f86ee5"
-		},
-		{
-			"binding": "is-safe-store",
-			"database_name": "is-safe-store",
-			"database_id": "16f7df9a-d5c7-427a-b252-6644cf3c63d0",
-			"remote": true
 		}
 	],
 	"ai": {

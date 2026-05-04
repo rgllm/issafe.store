@@ -7,6 +7,8 @@ import {
   Globe2,
   Loader2,
   Search,
+  ShieldCheck,
+  TimerReset,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { TurnstileWidget } from '../components/TurnstileWidget'
@@ -129,6 +131,20 @@ function HomePage() {
               <p className="home-lede">
                 Paste a store URL to get a risk score, confidence rating, and cited public evidence in seconds.
               </p>
+              <div className="hero-trust-row" aria-label="Product highlights">
+                <span className="hero-trust-chip">
+                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                  Public evidence only
+                </span>
+                <span className="hero-trust-chip">
+                  <TimerReset className="h-3.5 w-3.5" aria-hidden="true" />
+                  Typical result in under 20s
+                </span>
+                <span className="hero-trust-chip">
+                  <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Works with global stores
+                </span>
+              </div>
               <form onSubmit={handleSubmit} className="island-shell hero-form">
                 <label htmlFor="store-url" className="sr-only">
                   Store URL
@@ -198,6 +214,14 @@ function HomePage() {
                   <p className="hero-metric-label">Evidence confidence</p>
                   <p className="hero-metric-value">High</p>
                 </article>
+              </div>
+              <div className="hero-feed">
+                <p className="hero-feed-title">Recent scan themes</p>
+                <div className="hero-feed-row">
+                  <span className="hero-feed-pill">New domain + aggressive discounts</span>
+                  <span className="hero-feed-pill">Missing return policy details</span>
+                  <span className="hero-feed-pill">Established store with strong signals</span>
+                </div>
               </div>
             </aside>
           </div>

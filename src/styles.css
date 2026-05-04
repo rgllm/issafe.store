@@ -265,6 +265,26 @@ input {
   line-height: 1.75;
 }
 
+.hero-trust-row {
+  margin-top: 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.hero-trust-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: color-mix(in oklab, var(--surface) 88%, var(--sand));
+  padding: 0.38rem 0.72rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--sea-ink-soft);
+}
+
 .hero-form {
   margin-top: 1.6rem;
   padding: 12px;
@@ -420,6 +440,40 @@ input {
   color: var(--sea-ink);
   font-size: 0.95rem;
   font-weight: 600;
+}
+
+.hero-feed {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.9rem;
+}
+
+.hero-feed-title {
+  margin: 0;
+  color: var(--sea-ink-soft);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.hero-feed-row {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.hero-feed-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--line);
+  padding: 0.35rem 0.62rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--sea-ink-soft);
 }
 
 .home-section-head {
