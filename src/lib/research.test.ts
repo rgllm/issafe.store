@@ -7,6 +7,7 @@ import {
   collectUrlhausEvidence,
   collectWebRiskEvidence,
   getCacheTtlSeconds,
+  tavilyResultToEvidence,
 } from './research'
 import type { Evidence, StoreSafetyRequest } from '../types/report'
 
@@ -183,6 +184,36 @@ describe('threat provider mapping', () => {
 })
 
 describe('Tavily evidence mapping', () => {
+  it('does not treat scam-question results as strong negative evidence', () => {
+    const evidence = tavilyResultToEvidence(
+      {
+        title: 'Is zara.com legit or a scam?',
+        content: 'We review whether zara.com is safe, trustworthy, and legitimate.',
+        url: 'https://example.com/zara-review',
+        score: 0.8,
+      },
+      observedAt,
+    )
+
+    expect(evidence.sentiment).toBe('neutral')
+    expect(evidence.weight).toBe(2)
+  })
+
+  it('keeps concrete severe reputation claims as negative evidence', () => {
+    const evidence = tavilyResultToEvidence(
+      {
+        title: 'Customer reports about example.com',
+        content: 'Customers report non-delivery, chargebacks, and counterfeit products.',
+        url: 'https://example.com/reports',
+        score: 0.8,
+      },
+      observedAt,
+    )
+
+    expect(evidence.sentiment).toBe('negative')
+    expect(evidence.weight).toBe(7)
+  })
+
   it('discards low-relevance Tavily results', async () => {
     vi.stubGlobal(
       'fetch',

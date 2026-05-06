@@ -1,113 +1,113 @@
-import { HeadContent, Scripts, createRootRoute } from '@tanstack/react-router'
-import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
-import { TanStackDevtools } from '@tanstack/react-devtools'
-import Footer from '../components/Footer'
-import Header from '../components/Header'
+import { HeadContent, Scripts, createRootRoute } from "@tanstack/react-router";
+import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { TanStackDevtools } from "@tanstack/react-devtools";
+import Footer from "../components/Footer";
+import Header from "../components/Header";
 
-import appCss from '../styles.css?url'
+import appCss from "../styles.css?url";
 
-const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='auto')?stored:'auto';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='auto'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);if(mode==='auto'){root.removeAttribute('data-theme')}else{root.setAttribute('data-theme',mode)}root.style.colorScheme=resolved;}catch(e){}})();`
+const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='auto')?stored:'auto';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='auto'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);if(mode==='auto'){root.removeAttribute('data-theme')}else{root.setAttribute('data-theme',mode)}root.style.colorScheme=resolved;}catch(e){}})();`;
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       {
-        charSet: 'utf-8',
+        charSet: "utf-8",
       },
       {
-        name: 'viewport',
-        content: 'width=device-width, initial-scale=1',
+        name: "viewport",
+        content: "width=device-width, initial-scale=1",
       },
       {
-        title: 'IsSafe.store | Check store risk before you buy',
+        title: "Is Safe Store | Check store risk before you buy",
       },
       {
-        name: 'description',
+        name: "description",
         content:
-          'Check whether an online store looks safe before checkout. Paste a store URL to get a risk score, confidence rating, recommendation, and cited public evidence.',
+          "Check whether an online store looks safe before checkout. Paste a store URL to get a risk score, confidence rating, recommendation, and cited public evidence.",
       },
       {
-        name: 'keywords',
+        name: "keywords",
         content:
-          'store safety checker, scam store checker, online shopping safety, ecommerce risk score, fraud check',
+          "store safety checker, scam store checker, online shopping safety, ecommerce risk score, fraud check",
       },
       {
-        name: 'author',
-        content: 'rgllm',
+        name: "author",
+        content: "rgllm",
       },
       {
-        name: 'robots',
-        content: 'index, follow',
+        name: "robots",
+        content: "index, follow",
       },
       {
-        name: 'theme-color',
-        content: '#289e62',
+        name: "theme-color",
+        content: "#289e62",
       },
       {
-        property: 'og:type',
-        content: 'website',
+        property: "og:type",
+        content: "website",
       },
       {
-        property: 'og:title',
-        content: 'IsSafe.store | Check store risk before you buy',
+        property: "og:title",
+        content: "Is Safe Store | Check store risk before you buy",
       },
       {
-        property: 'og:description',
+        property: "og:description",
         content:
-          'Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.',
+          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
       },
       {
-        property: 'og:image',
-        content: '/logo512.png',
+        property: "og:image",
+        content: "/logo512.png",
       },
       {
-        property: 'og:site_name',
-        content: 'IsSafe.store',
+        property: "og:site_name",
+        content: "Is Safe Store",
       },
       {
-        name: 'twitter:card',
-        content: 'summary',
+        name: "twitter:card",
+        content: "summary",
       },
       {
-        name: 'twitter:title',
-        content: 'IsSafe.store | Check store risk before you buy',
+        name: "twitter:title",
+        content: "Is Safe Store | Check store risk before you buy",
       },
       {
-        name: 'twitter:description',
+        name: "twitter:description",
         content:
-          'Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.',
+          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
       },
       {
-        name: 'twitter:image',
-        content: '/logo512.png',
+        name: "twitter:image",
+        content: "/logo512.png",
       },
     ],
     links: [
       {
-        rel: 'stylesheet',
+        rel: "stylesheet",
         href: appCss,
       },
       {
-        rel: 'icon',
-        type: 'image/svg+xml',
-        href: '/logo.svg',
+        rel: "icon",
+        type: "image/svg+xml",
+        href: "/logo.svg",
       },
       {
-        rel: 'apple-touch-icon',
-        href: '/logo192.png',
+        rel: "apple-touch-icon",
+        href: "/logo192.png",
       },
       {
-        rel: 'manifest',
-        href: '/manifest.json',
+        rel: "manifest",
+        href: "/manifest.json",
       },
       {
-        rel: 'canonical',
-        href: 'https://issafe.store/',
+        rel: "canonical",
+        href: "https://issafe.store/",
       },
     ],
   }),
   shellComponent: RootDocument,
-})
+});
 
 function RootDocument({ children }: { children: React.ReactNode }) {
   return (
@@ -123,11 +123,11 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         {import.meta.env.DEV ? (
           <TanStackDevtools
             config={{
-              position: 'bottom-right',
+              position: "bottom-right",
             }}
             plugins={[
               {
-                name: 'Tanstack Router',
+                name: "Tanstack Router",
                 render: <TanStackRouterDevtoolsPanel />,
               },
             ]}
@@ -136,5 +136,5 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <Scripts />
       </body>
     </html>
-  )
+  );
 }

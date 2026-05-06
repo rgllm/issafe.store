@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
   Bot,
@@ -8,131 +8,138 @@ import {
   Loader2,
   ShieldAlert,
   Star,
-} from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
-import { BrandLogo } from '../components/BrandLogo'
-import { TurnstileWidget } from '../components/TurnstileWidget'
-import type { StoreSafetyReport } from '../types/report'
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { BrandLogo } from "../components/BrandLogo";
+import { TurnstileWidget } from "../components/TurnstileWidget";
+import type { StoreSafetyReport } from "../types/report";
 
 type CheckResponse = {
-  report: StoreSafetyReport
-  cached: boolean
-  turnstileSkipped?: boolean
-}
+  report: StoreSafetyReport;
+  cached: boolean;
+  turnstileSkipped?: boolean;
+};
 
 type ConfigResponse = {
-  turnstileSiteKey: string | null
-}
+  turnstileSiteKey: string | null;
+};
 
 const SIGNALS = [
   {
     icon: Clock,
-    title: 'Domain Age & History',
+    title: "Domain Age & History",
     description:
-      'We check when the domain was registered and whether ownership has changed hands. Newly registered domains or those with a history of transfers are a common indicator of disposable scam stores.',
+      "We check when the domain was registered and whether ownership has changed hands. Newly registered domains or those with a history of transfers are a common indicator of disposable scam stores.",
   },
   {
     icon: Globe,
-    title: 'WHOIS & Registration Data',
+    title: "WHOIS & Registration Data",
     description:
-      'Public WHOIS records reveal the registrar, registration country, and privacy shielding status. Stores hiding all contact information behind privacy proxies score higher risk.',
+      "Public WHOIS records reveal the registrar, registration country, and privacy shielding status. Stores hiding all contact information behind privacy proxies score higher risk.",
   },
   {
     icon: Star,
-    title: 'Review Platform Signals',
+    title: "Review Platform Signals",
     description:
-      'We aggregate public complaint and review data from Trustpilot, Better Business Bureau, ScamAdviser, Reddit, and similar platforms to surface patterns of non-delivery, fraud, or disputes.',
+      "We aggregate public complaint and review data from Trustpilot, Better Business Bureau, ScamAdviser, Reddit, and similar platforms to surface patterns of non-delivery, fraud, or disputes.",
   },
   {
     icon: ShieldAlert,
-    title: 'Blocklist & Fraud Databases',
+    title: "Blocklist & Fraud Databases",
     description:
-      'We cross-reference the store URL and domain against publicly maintained fraud blocklists, phishing databases, and community-reported scam registries.',
+      "We cross-reference the store URL and domain against publicly maintained fraud blocklists, phishing databases, and community-reported scam registries.",
   },
   {
     icon: DatabaseZap,
-    title: 'SSL & Technical Signals',
+    title: "SSL & Technical Signals",
     description:
       "We verify the presence, validity, and issuing authority of the store's SSL certificate. Self-signed or recently-issued certificates on new domains elevate risk.",
   },
   {
     icon: Bot,
-    title: 'AI-Powered Synthesis',
+    title: "AI-Powered Synthesis",
     description:
-      'All collected signals are passed to an AI model that weighs evidence, resolves conflicts between sources, and generates a calibrated risk score, confidence rating, and plain-language recommendation.',
+      "All collected signals are passed to an AI model that weighs evidence, resolves conflicts between sources, and generates a calibrated risk score, confidence rating, and plain-language recommendation.",
   },
-]
+];
 
-export const Route = createFileRoute('/')({ component: HomePage })
+export const Route = createFileRoute("/")({ component: HomePage });
 
 function HomePage() {
-  const navigate = useNavigate()
-  const [url, setUrl] = useState('')
-  const [turnstileToken, setTurnstileToken] = useState<string | undefined>()
-  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const handleTurnstileTokenChange = useCallback((token: string | undefined) => {
-    setTurnstileToken(token)
-  }, [])
+  const navigate = useNavigate();
+  const [url, setUrl] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const handleTurnstileTokenChange = useCallback(
+    (token: string | undefined) => {
+      setTurnstileToken(token);
+    },
+    [],
+  );
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
 
-    fetch('/api/config')
+    fetch("/api/config")
       .then((response) => response.json() as Promise<ConfigResponse>)
       .then((config) => {
         if (!cancelled) {
-          setTurnstileSiteKey(config.turnstileSiteKey)
+          setTurnstileSiteKey(config.turnstileSiteKey);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setTurnstileSiteKey(null)
+          setTurnstileSiteKey(null);
         }
-      })
+      });
 
     return () => {
-      cancelled = true
-    }
-  }, [])
+      cancelled = true;
+    };
+  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    const normalizedUrl = url.trim()
+    event.preventDefault();
+    const normalizedUrl = url.trim();
     if (!normalizedUrl) {
-      return
+      return;
     }
 
-    setError(null)
-    setIsSubmitting(true)
+    setError(null);
+    setIsSubmitting(true);
 
     try {
-      const response = await fetch('/api/check', {
-        method: 'POST',
+      const response = await fetch("/api/check", {
+        method: "POST",
         headers: {
-          'content-type': 'application/json',
+          "content-type": "application/json",
         },
         body: JSON.stringify({
           url: normalizedUrl,
           turnstileToken,
         }),
-      })
-      const body = (await response.json()) as CheckResponse | { error: string }
+      });
+      const body = (await response.json()) as CheckResponse | { error: string };
 
       if (!response.ok) {
-        throw new Error('error' in body ? body.error : 'The check failed.')
+        throw new Error("error" in body ? body.error : "The check failed.");
       }
 
-      const result = body as CheckResponse
+      const result = body as CheckResponse;
       await navigate({
-        to: '/report/$id',
+        to: "/report/$id",
         params: { id: result.report.id },
-      })
+      });
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'The check failed.')
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "The check failed.",
+      );
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
   }
 
@@ -147,12 +154,16 @@ function HomePage() {
               Store Safety Risk Lookup
             </h1>
             <p className="m-0 max-w-lg text-pretty text-base leading-7 text-muted-foreground">
-              Paste any store URL to get a risk score, confidence rating, recommendation, and cited public evidence.
+              Paste any store URL to get a risk score, confidence rating,
+              recommendation, and cited public evidence.
             </p>
           </div>
 
           <div className="flex w-full flex-col items-stretch gap-6">
-            <form onSubmit={handleSubmit} className="flex w-full flex-col items-stretch gap-3 sm:flex-row">
+            <form
+              onSubmit={handleSubmit}
+              className="flex w-full flex-col items-stretch gap-3 sm:flex-row"
+            >
               <label htmlFor="store-url" className="sr-only">
                 Store URL to check
               </label>
@@ -172,23 +183,37 @@ function HomePage() {
                 disabled={isSubmitting || !url.trim()}
                 className="flex min-h-12 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
-                {isSubmitting ? 'Checking...' : 'Check Store'}
+                {isSubmitting ? (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                ) : null}
+                {isSubmitting ? "Checking..." : "Check Store"}
               </button>
             </form>
 
-            <TurnstileWidget siteKey={turnstileSiteKey} onTokenChange={handleTurnstileTokenChange} />
+            <TurnstileWidget
+              siteKey={turnstileSiteKey}
+              onTokenChange={handleTurnstileTokenChange}
+            />
 
             {isSubmitting ? (
               <p className="m-0 text-center text-sm text-muted-foreground">
-                Scanning public signals for{' '}
-                <span className="font-medium text-foreground">{url.trim()}</span>...
+                Scanning public signals for{" "}
+                <span className="font-medium text-foreground">
+                  {url.trim()}
+                </span>
+                ...
               </p>
             ) : null}
 
             {error ? (
               <p className="m-0 flex items-start gap-2 rounded-md border border-[var(--risk-line)] bg-[var(--risk-bg)] px-4 py-3 text-left text-sm font-medium text-[var(--signal-risk)]">
-                <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+                <AlertTriangle
+                  className="mt-0.5 h-4 w-4 flex-none"
+                  aria-hidden="true"
+                />
                 {error}
               </p>
             ) : null}
@@ -206,13 +231,15 @@ function HomePage() {
                 How We Check a Store
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-pretty text-base leading-7 text-muted-foreground">
-                IsSafe.store combines structured public data sources with AI synthesis to produce a single, actionable risk assessment. No account required. No purchase data is used.
+                This application combines structured public data sources with AI
+                synthesis to produce a single, actionable risk assessment. No
+                account required. No purchase data is used.
               </p>
             </div>
 
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               {SIGNALS.map((signal) => {
-                const Icon = signal.icon
+                const Icon = signal.icon;
 
                 return (
                   <article
@@ -221,24 +248,33 @@ function HomePage() {
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/8">
-                        <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
+                        <Icon
+                          className="h-4 w-4 text-primary"
+                          aria-hidden="true"
+                        />
                       </div>
-                      <h3 className="m-0 text-sm font-semibold text-foreground">{signal.title}</h3>
+                      <h3 className="m-0 text-sm font-semibold text-foreground">
+                        {signal.title}
+                      </h3>
                     </div>
                     <p className="m-0 text-sm leading-relaxed text-muted-foreground">
                       {signal.description}
                     </p>
                   </article>
-                )
+                );
               })}
             </div>
 
             <div className="rounded-md border border-border bg-muted/50 px-5 py-3.5 text-pretty text-sm leading-6 text-muted-foreground">
-              <span className="font-semibold text-foreground">Note:</span> IsSafe.store relies entirely on publicly available signals. We do not access private merchant data, payment records, or order history. Results represent a best-effort public-signal assessment and should not be the sole basis for any financial decision.
+              <span className="font-semibold text-foreground">Note:</span> This
+              application relies entirely on publicly available signals. We do
+              not access private merchant data, payment records, or order
+              history. Results represent a best-effort public-signal assessment
+              and should not be the sole basis for any financial decision.
             </div>
           </div>
         </div>
       </section>
     </main>
-  )
+  );
 }

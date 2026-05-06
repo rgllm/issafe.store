@@ -38,6 +38,7 @@ type RecommendationContext = {
   categoryCount: number
   hasCriticalThreat: boolean
   highNegativeCount: number
+  highNonReputationNegativeCount: number
   strongNegativeReputationCount: number
   hasIndependentReputation: boolean
 }
@@ -83,6 +84,12 @@ export function scoreEvidence(
     (factor) =>
       factor.sentiment === 'negative' && SEVERITY_RANK[factor.severity] >= SEVERITY_RANK.high,
   ).length
+  const highNonReputationNegativeCount = factors.filter(
+    (factor) =>
+      factor.key !== 'independent_reputation' &&
+      factor.sentiment === 'negative' &&
+      SEVERITY_RANK[factor.severity] >= SEVERITY_RANK.high,
+  ).length
   const strongNegativeReputationCount = factors.filter(
     (factor) =>
       factor.key === 'independent_reputation' &&
@@ -116,6 +123,7 @@ export function scoreEvidence(
       categoryCount,
       hasCriticalThreat,
       highNegativeCount,
+      highNonReputationNegativeCount,
       strongNegativeReputationCount,
       hasIndependentReputation,
     }),
@@ -133,6 +141,7 @@ export function getRecommendation(
           categoryCount: contextOrEvidenceCount,
           hasCriticalThreat: false,
           highNegativeCount: 0,
+          highNonReputationNegativeCount: 0,
           strongNegativeReputationCount: 0,
           hasIndependentReputation: true,
         }
@@ -146,7 +155,7 @@ export function getRecommendation(
     return 'unknown'
   }
 
-  if (score < 55 || context.strongNegativeReputationCount >= 2) {
+  if (score < 45 || (score < 55 && context.highNonReputationNegativeCount > 0)) {
     return 'avoid'
   }
 
@@ -419,7 +428,12 @@ function createPolicyFactor(item: Evidence, text: string): RiskFactor {
 }
 
 function createReputationFactor(item: Evidence, text: string): RiskFactor {
-  if (/non-delivery|never arrived|not delivered|chargeback|counterfeit|fraud|scam/.test(text)) {
+  if (
+    /non-delivery|never arrived|not delivered|chargeback|counterfeit|fraudulent|reported fraud|fraud reports|fraudulent charges|fake store|verified scam|confirmed scam/.test(
+      text,
+    ) &&
+    !isAmbiguousScamQuestion(text)
+  ) {
     return createFactor('independent_reputation', 'negative', 'high', 84, item.title)
   }
 
@@ -453,6 +467,17 @@ function createCommerceFactor(item: Evidence, text: string): RiskFactor {
   }
 
   return createFactor('commerce_intent', item.sentiment, 'low', 38, item.title)
+}
+
+function isAmbiguousScamQuestion(text: string) {
+  return (
+    /\b(is|are|was|were)\b.{0,80}\b(legit|safe|scam|fraud|real|trustworthy)\b/.test(
+      text,
+    ) &&
+    !/non-delivery|never arrived|not delivered|chargeback|counterfeit|fraudulent|reported fraud|fraud reports|fraudulent charges|fake store|verified scam|confirmed scam/.test(
+      text,
+    )
+  )
 }
 
 function createFactor(

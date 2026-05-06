@@ -94,23 +94,27 @@ const STRONG_NEGATIVE_TERMS = [
   'never arrived',
   'not delivered',
   'not received',
-  'refund issue',
   'no refund',
   'chargeback',
   'counterfeit',
-  'fraud',
+  'fraudulent',
+  'reported fraud',
+  'fraud reports',
+  'fraudulent charges',
   'fake store',
   'stole money',
-  'scam',
+  'verified scam',
+  'confirmed scam',
 ]
 
 const NEGATIVE_TERMS = [
-  'fake',
   'complaint',
   'complaints',
   'bad reviews',
   'negative reviews',
-  'refund',
+  'refund issue',
+  'refund issues',
+  'refund complaints',
 ]
 
 const POSITIVE_TERMS = [
@@ -743,6 +747,9 @@ export async function classifyEvidenceFactors(
     'Classify public store-safety evidence into fixed risk factors.',
     'Return strict JSON only, with shape: {"factors":[{"key":"threat_list|domain_age|site_integrity|contact_identity|policy_completeness|independent_reputation|commerce_intent","sentiment":"positive|neutral|negative","severity":"low|medium|high|critical","confidence":0-100,"reason":"short reason"}]}.',
     'Do not include a score or recommendation.',
+    'Do not treat repeated search snippets as independent proof of risk.',
+    'Treat SEO-style questions such as "is this store legit/scam/safe" as neutral unless the evidence asserts concrete fraud, non-delivery, counterfeit goods, chargebacks, phishing, malware, or a verified scam.',
+    'Generic complaints, refund friction, or bad reviews may be low/medium reputation risk, but must not be high or critical without concrete fraud evidence.',
     `Store: ${request.hostname}`,
     'Evidence:',
     ...evidence.slice(0, 14).map((item) => `- [${item.sourceType}/${item.sentiment}/${item.weight}] ${item.title}: ${item.snippet}`),
@@ -801,8 +808,12 @@ export function tavilyResultToEvidence(result: TavilyResult, observedAt: string)
   const title = result.title ?? 'Search result'
   const snippet = result.content ?? result.url ?? 'External search result.'
   const haystack = `${title} ${snippet} ${result.url ?? ''}`.toLowerCase()
+  const hasScamQuestion = isScamQuestionResult(haystack)
   const hasStrongNegativeTerm = STRONG_NEGATIVE_TERMS.some((term) => haystack.includes(term))
-  const hasNegativeTerm = NEGATIVE_TERMS.some((term) => haystack.includes(term))
+  const hasNegativeTerm =
+    !hasScamQuestion &&
+    !hasStrongNegativeTerm &&
+    NEGATIVE_TERMS.some((term) => haystack.includes(term))
   const hasPositiveTerm = POSITIVE_TERMS.some((term) => haystack.includes(term))
   const sourceType = /trustpilot|reviews?|reddit|complaints?|bbb|scamadviser/i.test(haystack)
     ? 'review'
@@ -817,6 +828,12 @@ export function tavilyResultToEvidence(result: TavilyResult, observedAt: string)
     weight: hasStrongNegativeTerm ? 7 : hasNegativeTerm ? 4 : hasPositiveTerm ? 4 : 2,
     observedAt,
   }
+}
+
+function isScamQuestionResult(text: string) {
+  return /\b(is|are|was|were)\b.{0,80}\b(legit|safe|scam|fraud|real|trustworthy)\b/.test(
+    text,
+  )
 }
 
 async function summarizeReport(

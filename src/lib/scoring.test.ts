@@ -266,4 +266,59 @@ describe('scoreEvidence', () => {
     expect(result.score).toBeLessThan(78)
     expect(result.recommendation).toBe('caution')
   })
+
+  it('does not force avoid for established stores with mixed reputation snippets', () => {
+    const result = scoreEvidence([
+      ...basicStoreSignals,
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Visible contact or business details',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Customer policy coverage found',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'rdap',
+        title: 'Domain older than three years',
+        sentiment: 'positive',
+        weight: 7,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Positive reviews on independent platforms',
+        snippet: 'Customers mention official stores, customer service, and positive reviews.',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Refund complaints on Reddit',
+        snippet: 'Customers describe refund issues and complaints.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'search-result',
+        title: 'Scam search result',
+        snippet: 'A result discusses whether the official store is a scam.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'No URLhaus malware listing found',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+    ])
+
+    expect(result.score).toBeGreaterThanOrEqual(55)
+    expect(result.score).toBeLessThan(78)
+    expect(result.recommendation).toBe('caution')
+  })
 })
