@@ -321,4 +321,160 @@ describe('scoreEvidence', () => {
     expect(result.score).toBeLessThan(78)
     expect(result.recommendation).toBe('caution')
   })
+
+  it('returns caution for established brands with service-review noise and unavailable providers', () => {
+    const result = scoreEvidence([
+      createEvidence({
+        sourceType: 'technical',
+        title: 'HTTPS is enabled',
+        snippet: 'The submitted store URL uses HTTPS.',
+        sentiment: 'positive',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Store homepage blocked automated check',
+        snippet:
+          'The homepage returned HTTP 403 to the automated checker. This often reflects bot protection and is not treated as a direct store-risk signal.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'rdap',
+        title: 'Domain older than three years',
+        snippet: 'RDAP registration date: 1997-05-29T04:00:00Z.',
+        sentiment: 'positive',
+        weight: 7,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'URLhaus malware check unavailable',
+        snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'PhishTank phishing check unavailable',
+        snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'Google Web Risk check unavailable',
+        snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Zara Reviews | Read Customer Service Reviews of zara.com - Yelp',
+        snippet:
+          'Zara has an average rating of 1.9 from 9607 reviews. Most customers are generally dissatisfied. The official website is zara.com.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Read Customer Service Reviews of www.zara.com - Trustpilot',
+        snippet:
+          'Consumers find customer service to be negative, with many reviewers reporting frustrating, slow support.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Zara Online - www.zara.com - Review Centre',
+        snippet: 'Worst customer service ever for a world wide company.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'search-result',
+        title: 'Fast-Fashion Brand Zara Alleges Massive Scam',
+        snippet:
+          'Zara claims another owner purchased Zara clothing, removed labels, and copied photos.',
+        sentiment: 'neutral',
+        weight: 2,
+      }),
+    ])
+
+    expect(result.score).toBeGreaterThanOrEqual(55)
+    expect(result.recommendation).toBe('caution')
+  })
+
+  it('does not return avoid when homepage and RDAP checks are blocked but reviews are service complaints', () => {
+    const result = scoreEvidence([
+      createEvidence({
+        sourceType: 'technical',
+        title: 'HTTPS is enabled',
+        snippet: 'The submitted store URL uses HTTPS.',
+        sentiment: 'positive',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Store homepage blocked automated check',
+        snippet:
+          'The homepage returned HTTP 403 to the automated checker. This often reflects bot protection and is not treated as a direct store-risk signal.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'rdap',
+        title: 'Domain registration lookup was inconclusive',
+        snippet: 'RDAP returned HTTP 403.',
+        sentiment: 'neutral',
+        weight: 2,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'URLhaus malware check unavailable',
+        snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'PhishTank phishing check unavailable',
+        snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'Google Web Risk check unavailable',
+        snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Zara Reviews | Read Customer Service Reviews of zara.com - Yelp',
+        snippet:
+          'Zara has an average rating of 1.9 from 9607 reviews. Most customers are generally dissatisfied.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Read Customer Service Reviews of www.zara.com - Trustpilot',
+        snippet:
+          'Consumers find customer service to be negative, with many reviewers reporting frustrating, slow support.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Zara Online - www.zara.com - Review Centre',
+        snippet: 'Worst customer service ever for a world wide company.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+    ])
+
+    expect(result.score).toBeGreaterThanOrEqual(40)
+    expect(result.recommendation).toBe('caution')
+  })
 })

@@ -3,6 +3,8 @@ import {
   buildTavilyQueries,
   classifyEvidenceFactors,
   collectPhishTankEvidence,
+  collectRdapEvidence,
+  collectSiteEvidence,
   collectTavilyEvidence,
   collectUrlhausEvidence,
   collectWebRiskEvidence,
@@ -70,6 +72,74 @@ describe('buildTavilyQueries', () => {
         includeDomains: ['trustpilot.com', 'reddit.com', 'bbb.org', 'scamadviser.com'],
       },
     ])
+  })
+})
+
+describe('site evidence collection', () => {
+  it('treats homepage 403 as automated access blocking, not direct store risk', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response('<html>Blocked</html>', {
+            status: 403,
+            headers: { 'content-type': 'text/html' },
+          }),
+        ),
+      ),
+    )
+
+    const evidence = await collectSiteEvidence('https://www.zara.com/')
+
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Store homepage blocked automated check',
+          sentiment: 'neutral',
+          weight: 1,
+        }),
+      ]),
+    )
+    expect(evidence).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Store homepage could not be reached',
+          sentiment: 'negative',
+        }),
+      ]),
+    )
+  })
+})
+
+describe('RDAP evidence collection', () => {
+  it('looks up the registrable domain for www hosts', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          events: [
+            {
+              eventAction: 'registration',
+              eventDate: '2000-01-01T00:00:00Z',
+            },
+          ],
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectRdapEvidence('www.zara.com')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://rdap.org/domain/zara.com',
+      expect.any(Object),
+    )
+    expect(evidence[0]).toEqual(
+      expect.objectContaining({
+        title: 'Domain older than three years',
+        sentiment: 'positive',
+        url: 'https://rdap.org/domain/zara.com',
+      }),
+    )
   })
 })
 
@@ -212,6 +282,37 @@ describe('Tavily evidence mapping', () => {
 
     expect(evidence.sentiment).toBe('negative')
     expect(evidence.weight).toBe(7)
+  })
+
+  it('treats low ratings and customer-service complaints as negative experience evidence', () => {
+    const evidence = tavilyResultToEvidence(
+      {
+        title: 'Zara Reviews | Read Customer Service Reviews of zara.com - Yelp',
+        content:
+          'Zara has an average rating of 1.9 from 9607 reviews. Most customers are generally dissatisfied. The official website is zara.com.',
+        url: 'https://www.yelp.com/biz/zara',
+        score: 0.8,
+      },
+      observedAt,
+    )
+
+    expect(evidence.sentiment).toBe('negative')
+    expect(evidence.weight).toBe(4)
+  })
+
+  it('does not treat official website mentions as positive reputation by themselves', () => {
+    const evidence = tavilyResultToEvidence(
+      {
+        title: 'Zara official website',
+        content: 'The official website is zara.com.',
+        url: 'https://example.com/zara',
+        score: 0.8,
+      },
+      observedAt,
+    )
+
+    expect(evidence.sentiment).toBe('neutral')
+    expect(evidence.weight).toBe(2)
   })
 
   it('discards low-relevance Tavily results', async () => {

@@ -112,6 +112,14 @@ const NEGATIVE_TERMS = [
   'complaints',
   'bad reviews',
   'negative reviews',
+  'low rating',
+  'poor rating',
+  'dissatisfied',
+  'worst customer service',
+  'frustrating',
+  'deceitful',
+  'disgraceful',
+  'harassment',
   'refund issue',
   'refund issues',
   'refund complaints',
@@ -119,11 +127,9 @@ const NEGATIVE_TERMS = [
 
 const POSITIVE_TERMS = [
   'verified',
-  'official',
   'trusted',
   'positive reviews',
   'good reviews',
-  'customer service',
   'return policy',
 ]
 
@@ -225,6 +231,21 @@ export async function collectSiteEvidence(normalizedUrl: string): Promise<Eviden
   const home = await fetchPage(homepage.toString())
 
   if (!home.ok) {
+    if (isAutomatedAccessBlocked(home.status)) {
+      return [
+        ...evidence,
+        {
+          sourceType: 'store-site',
+          title: 'Store homepage blocked automated check',
+          url: homepage.toString(),
+          snippet: `The homepage returned HTTP ${home.status} to the automated checker. This often reflects bot protection and is not treated as a direct store-risk signal.`,
+          sentiment: 'neutral',
+          weight: 1,
+          observedAt,
+        },
+      ]
+    }
+
     return [
       ...evidence,
       {
@@ -344,16 +365,18 @@ export async function collectSiteEvidence(normalizedUrl: string): Promise<Eviden
 
 export async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
+  const lookupDomain = getRdapLookupDomain(hostname)
+  const lookupUrl = `https://rdap.org/domain/${lookupDomain}`
 
   try {
-    const response = await fetchWithTimeout(`https://rdap.org/domain/${hostname}`, 4500)
+    const response = await fetchWithTimeout(lookupUrl, 4500)
 
     if (!response.ok) {
       return [
         {
           sourceType: 'rdap',
           title: 'Domain registration lookup was inconclusive',
-          url: `https://rdap.org/domain/${hostname}`,
+          url: lookupUrl,
           snippet: `RDAP returned HTTP ${response.status}.`,
           sentiment: 'neutral',
           weight: 2,
@@ -378,7 +401,7 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
         {
           sourceType: 'rdap',
           title: 'RDAP record found without registration age',
-          url: `https://rdap.org/domain/${hostname}`,
+          url: lookupUrl,
           snippet: 'RDAP returned a public domain record, but no registration date was available.',
           sentiment: 'neutral',
           weight: 2,
@@ -392,7 +415,7 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
         {
           sourceType: 'rdap',
           title: 'Domain registered less than 30 days ago',
-          url: `https://rdap.org/domain/${hostname}`,
+          url: lookupUrl,
           snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 8,
@@ -406,7 +429,7 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
         {
           sourceType: 'rdap',
           title: 'Domain registered less than 90 days ago',
-          url: `https://rdap.org/domain/${hostname}`,
+          url: lookupUrl,
           snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 6,
@@ -420,7 +443,7 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
         {
           sourceType: 'rdap',
           title: 'Domain registered less than one year ago',
-          url: `https://rdap.org/domain/${hostname}`,
+          url: lookupUrl,
           snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 3,
@@ -434,7 +457,7 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
         {
           sourceType: 'rdap',
           title: 'Domain older than three years',
-          url: `https://rdap.org/domain/${hostname}`,
+          url: lookupUrl,
           snippet: `RDAP registration date: ${registeredAt}.`,
           sentiment: 'positive',
           weight: 7,
@@ -447,7 +470,7 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
       {
         sourceType: 'rdap',
         title: 'Domain older than one year',
-        url: `https://rdap.org/domain/${hostname}`,
+        url: lookupUrl,
         snippet: `RDAP registration date: ${registeredAt}.`,
         sentiment: 'positive',
         weight: 4,
@@ -459,7 +482,7 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
       {
         sourceType: 'rdap',
         title: 'Domain registration lookup failed',
-        url: `https://rdap.org/domain/${hostname}`,
+        url: lookupUrl,
         snippet: 'The RDAP lookup did not complete before the timeout.',
         sentiment: 'neutral',
         weight: 1,
@@ -467,6 +490,14 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
       },
     ]
   }
+}
+
+function isAutomatedAccessBlocked(status: number | undefined) {
+  return status === 401 || status === 403 || status === 429
+}
+
+function getRdapLookupDomain(hostname: string) {
+  return hostname.startsWith('www.') ? hostname.slice(4) : hostname
 }
 
 export async function collectThreatListEvidence(
@@ -750,6 +781,8 @@ export async function classifyEvidenceFactors(
     'Do not treat repeated search snippets as independent proof of risk.',
     'Treat SEO-style questions such as "is this store legit/scam/safe" as neutral unless the evidence asserts concrete fraud, non-delivery, counterfeit goods, chargebacks, phishing, malware, or a verified scam.',
     'Generic complaints, refund friction, or bad reviews may be low/medium reputation risk, but must not be high or critical without concrete fraud evidence.',
+    'Low ratings and customer-service complaints are shopper experience signals, not scam proof; classify them as independent_reputation low or medium.',
+    'Mentions that a submitted domain is the official website are identity context only, not a positive reputation signal by themselves.',
     `Store: ${request.hostname}`,
     'Evidence:',
     ...evidence.slice(0, 14).map((item) => `- [${item.sourceType}/${item.sentiment}/${item.weight}] ${item.title}: ${item.snippet}`),

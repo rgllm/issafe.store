@@ -39,6 +39,7 @@ type RecommendationContext = {
   hasCriticalThreat: boolean
   highNegativeCount: number
   highNonReputationNegativeCount: number
+  highReputationNegativeCount: number
   strongNegativeReputationCount: number
   hasIndependentReputation: boolean
 }
@@ -90,6 +91,12 @@ export function scoreEvidence(
       factor.sentiment === 'negative' &&
       SEVERITY_RANK[factor.severity] >= SEVERITY_RANK.high,
   ).length
+  const highReputationNegativeCount = factors.filter(
+    (factor) =>
+      factor.key === 'independent_reputation' &&
+      factor.sentiment === 'negative' &&
+      SEVERITY_RANK[factor.severity] >= SEVERITY_RANK.high,
+  ).length
   const strongNegativeReputationCount = factors.filter(
     (factor) =>
       factor.key === 'independent_reputation' &&
@@ -124,6 +131,7 @@ export function scoreEvidence(
       hasCriticalThreat,
       highNegativeCount,
       highNonReputationNegativeCount,
+      highReputationNegativeCount,
       strongNegativeReputationCount,
       hasIndependentReputation,
     }),
@@ -142,6 +150,7 @@ export function getRecommendation(
           hasCriticalThreat: false,
           highNegativeCount: 0,
           highNonReputationNegativeCount: 0,
+          highReputationNegativeCount: 0,
           strongNegativeReputationCount: 0,
           hasIndependentReputation: true,
         }
@@ -151,11 +160,22 @@ export function getRecommendation(
     return 'avoid'
   }
 
-  if (confidence < 45 || context.categoryCount < 4) {
+  if (
+    confidence < 45 ||
+    (context.categoryCount < 4 &&
+      !(context.categoryCount >= 3 && context.hasIndependentReputation))
+  ) {
     return 'unknown'
   }
 
-  if (score < 45 || (score < 55 && context.highNonReputationNegativeCount > 0)) {
+  if (
+    score < 45 &&
+    (context.highNonReputationNegativeCount > 0 || context.highReputationNegativeCount >= 2)
+  ) {
+    return 'avoid'
+  }
+
+  if (score < 55 && context.highNonReputationNegativeCount > 0) {
     return 'avoid'
   }
 
@@ -193,10 +213,7 @@ function aggregateFactorImpacts(factors: RiskFactor[]) {
     const positiveFactors = keyFactors.filter((factor) => factor.sentiment === 'positive')
 
     if (key === 'independent_reputation') {
-      const negativeImpact = Math.min(
-        35,
-        negativeFactors.reduce((total, factor) => total + getNegativeImpact(factor), 0),
-      )
+      const negativeImpact = getReputationNegativeImpact(negativeFactors)
       riskPenalty += negativeImpact
       trustBonus +=
         negativeImpact > 0
@@ -234,6 +251,38 @@ function getStrongestImpact(
   getImpact: (factor: RiskFactor) => number,
 ) {
   return factors.reduce((strongest, factor) => Math.max(strongest, getImpact(factor)), 0)
+}
+
+function getReputationNegativeImpact(negativeFactors: RiskFactor[]) {
+  if (negativeFactors.length === 0) {
+    return 0
+  }
+
+  const concreteThreatFactors = negativeFactors.filter(isConcreteReputationThreatFactor)
+  const serviceOrReviewFactors = negativeFactors.filter(
+    (factor) => !concreteThreatFactors.includes(factor),
+  )
+
+  if (concreteThreatFactors.length > 0) {
+    const concreteImpact = concreteThreatFactors.reduce(
+      (total, factor) => total + getNegativeImpact(factor),
+      0,
+    )
+    const reviewNoiseImpact = Math.min(6, serviceOrReviewFactors.length * 2)
+
+    return Math.min(35, concreteImpact + reviewNoiseImpact)
+  }
+
+  const strongestReviewImpact = getStrongestImpact(serviceOrReviewFactors, getNegativeImpact)
+  const repeatedReviewImpact = Math.min(6, Math.max(0, serviceOrReviewFactors.length - 1) * 2)
+
+  return Math.min(18, strongestReviewImpact + repeatedReviewImpact)
+}
+
+function isConcreteReputationThreatFactor(factor: RiskFactor) {
+  return /non-delivery|never arrived|not delivered|chargeback|counterfeit|fraudulent|reported fraud|fraud reports|fraudulent charges|fake store|stole money|verified scam|confirmed scam/.test(
+    factor.reason.toLowerCase(),
+  )
 }
 
 function getPositiveImpact(factor: RiskFactor) {
@@ -309,19 +358,22 @@ function evidenceToFactors(item: Evidence): RiskFactor[] {
   }
 
   if (
-    item.sourceType === 'technical' ||
+    (item.sourceType === 'technical' || item.sourceType === 'store-site') &&
     /https|homepage|could not be reached|responded with http|reachable/i.test(text)
   ) {
     factors.push(createSiteIntegrityFactor(item, text))
   }
 
-  if (/contact|business|address|support|company|registered office|identity/i.test(text)) {
+  if (
+    item.sourceType === 'store-site' &&
+    /contact|business|address|support|company|registered office|identity/i.test(text)
+  ) {
     factors.push(createContactFactor(item, text))
   }
 
   if (
     item.sourceType === 'store-site' &&
-    /policy|return|refund|shipping|delivery|privacy|terms/i.test(text)
+    /polic|\breturns?\b|refund|shipping|delivery|privacy|terms/i.test(text)
   ) {
     factors.push(createPolicyFactor(item, text))
   }
@@ -336,7 +388,12 @@ function evidenceToFactors(item: Evidence): RiskFactor[] {
     factors.push(createReputationFactor(item, text))
   }
 
-  if (/cart|checkout|shop now|add to cart|payment|commerce|storefront|sell products/i.test(text)) {
+  if (
+    item.sourceType === 'store-site' &&
+    /cart|checkout|shop now|add to cart|payment|commerce|storefront|shopping signals|sell products/i.test(
+      text,
+    )
+  ) {
     factors.push(createCommerceFactor(item, text))
   }
 
@@ -392,6 +449,10 @@ function createSiteIntegrityFactor(item: Evidence, text: string): RiskFactor {
     return createFactor('site_integrity', 'negative', 'medium', 84, item.title)
   }
 
+  if (/blocked automated check|automated checker|bot protection/.test(text)) {
+    return createFactor('site_integrity', 'neutral', 'low', 50, item.title)
+  }
+
   if (/could not be reached|request failed|http 4|http 5/.test(text)) {
     return createFactor('site_integrity', 'negative', 'high', 84, item.title)
   }
@@ -428,21 +489,31 @@ function createPolicyFactor(item: Evidence, text: string): RiskFactor {
 }
 
 function createReputationFactor(item: Evidence, text: string): RiskFactor {
+  const reason = `${item.title}: ${item.snippet}`.slice(0, 180)
+
   if (
     /non-delivery|never arrived|not delivered|chargeback|counterfeit|fraudulent|reported fraud|fraud reports|fraudulent charges|fake store|verified scam|confirmed scam/.test(
       text,
     ) &&
     !isAmbiguousScamQuestion(text)
   ) {
-    return createFactor('independent_reputation', 'negative', 'high', 84, item.title)
+    return createFactor('independent_reputation', 'negative', 'high', 84, reason)
+  }
+
+  if (
+    /low rating|poor rating|dissatisfied|worst customer service|frustrating|slow|deceitful|disgraceful|harassment/.test(
+      text,
+    )
+  ) {
+    return createFactor('independent_reputation', 'negative', 'low', 68, reason)
   }
 
   if (/complaint|refund issue|bad review|negative review/.test(text)) {
-    return createFactor('independent_reputation', 'negative', 'medium', 72, item.title)
+    return createFactor('independent_reputation', 'negative', 'medium', 72, reason)
   }
 
-  if (/verified|trusted|positive reviews|good review|official|customer service/.test(text)) {
-    return createFactor('independent_reputation', 'positive', 'medium', 70, item.title)
+  if (/verified|trusted|positive reviews|good review/.test(text)) {
+    return createFactor('independent_reputation', 'positive', 'medium', 70, reason)
   }
 
   const providerGap = /not configured|unavailable|failed|timeout|did not complete/.test(text)
@@ -453,7 +524,7 @@ function createReputationFactor(item: Evidence, text: string): RiskFactor {
     severity: 'low',
     confidence: providerGap ? 20 : 45,
     providerGap,
-    reason: item.title,
+    reason,
   })[0]
 }
 
