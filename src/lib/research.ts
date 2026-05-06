@@ -1,17 +1,25 @@
 import { dedupeEvidence, scoreEvidence } from './scoring'
+import type { RiskFactor, RiskFactorKey } from './scoring'
 import type { Evidence, StoreSafetyReport, StoreSafetyRequest } from '../types/report'
 
 type ResearchEnv = {
   AI?: Ai
   AI_MODEL?: string
   CACHE_TTL_SECONDS?: string
+  GOOGLE_WEB_RISK_API_KEY?: string
   TAVILY_API_KEY?: string
+}
+
+type TavilyQuery = {
+  query: string
+  includeDomains?: string[]
 }
 
 type TavilyResult = {
   title?: string
   url?: string
   content?: string
+  score?: number
 }
 
 type TavilyResponse = {
@@ -24,6 +32,52 @@ type WorkersAiTextResponse = {
   choices?: Array<{ message?: { content?: string }; text?: string }>
 }
 
+type UrlhausResponse = {
+  query_status?: string
+  url?: string
+  url_status?: string
+  threat?: string
+  tags?: string[]
+  urls?: Array<{
+    url?: string
+    url_status?: string
+    threat?: string
+    tags?: string[]
+  }>
+}
+
+type PhishTankResponse = {
+  results?: {
+    in_database?: boolean
+    valid?: boolean
+    verified?: boolean
+    phish_id?: string | number
+  }
+}
+
+type WebRiskResponse = {
+  threat?: {
+    threatTypes?: string[]
+    expireTime?: string
+  }
+}
+
+type PolicyPage = {
+  url: string
+  html: string
+  title: string | null
+}
+
+const RISK_FACTOR_KEYS: RiskFactorKey[] = [
+  'threat_list',
+  'domain_age',
+  'site_integrity',
+  'contact_identity',
+  'policy_completeness',
+  'independent_reputation',
+  'commerce_intent',
+]
+
 const POLICY_LINK_PATTERNS = [
   'contact',
   'about',
@@ -35,19 +89,28 @@ const POLICY_LINK_PATTERNS = [
   'privacy',
 ]
 
-const NEGATIVE_TERMS = [
-  'scam',
+const STRONG_NEGATIVE_TERMS = [
+  'non-delivery',
+  'never arrived',
+  'not delivered',
+  'not received',
+  'refund issue',
+  'no refund',
+  'chargeback',
+  'counterfeit',
   'fraud',
+  'fake store',
+  'stole money',
+  'scam',
+]
+
+const NEGATIVE_TERMS = [
   'fake',
   'complaint',
   'complaints',
-  'refund issue',
-  'chargeback',
-  'never arrived',
-  'not delivered',
-  'counterfeit',
-  'trustpilot',
-  'reddit',
+  'bad reviews',
+  'negative reviews',
+  'refund',
 ]
 
 const POSITIVE_TERMS = [
@@ -55,8 +118,16 @@ const POSITIVE_TERMS = [
   'official',
   'trusted',
   'positive reviews',
+  'good reviews',
   'customer service',
   'return policy',
+]
+
+const WEB_RISK_THREAT_TYPES = [
+  'MALWARE',
+  'SOCIAL_ENGINEERING',
+  'UNWANTED_SOFTWARE',
+  'SOCIAL_ENGINEERING_EXTENDED_COVERAGE',
 ]
 
 export async function runStoreResearch(
@@ -75,11 +146,23 @@ export async function runStoreResearch(
   reportProgress?.('researching', 'Checking domain registration data.')
 
   const rdapEvidence = await collectRdapEvidence(request.hostname)
+  reportProgress?.('researching', 'Checking public threat-list signals.')
+
+  const threatEvidence = await collectThreatListEvidence(request, env)
   reportProgress?.('researching', 'Searching for external reputation signals.')
 
   const searchEvidence = await collectTavilyEvidence(request.hostname, env)
-  const evidence = dedupeEvidence([...siteEvidence, ...rdapEvidence, ...searchEvidence])
-  const score = scoreEvidence(evidence)
+  const evidence = dedupeEvidence([
+    ...siteEvidence,
+    ...rdapEvidence,
+    ...threatEvidence,
+    ...searchEvidence,
+  ])
+
+  reportProgress?.('scoring', 'Classifying evidence and calculating the risk score.')
+
+  const classifiedFactors = await classifyEvidenceFactors(request, evidence, env)
+  const score = scoreEvidence(evidence, classifiedFactors)
 
   reportProgress?.('scoring', 'Summarizing evidence and calculating the risk score.')
 
@@ -108,7 +191,7 @@ export function getCacheTtlSeconds(env: Pick<ResearchEnv, 'CACHE_TTL_SECONDS'>) 
   return parsed
 }
 
-async function collectSiteEvidence(normalizedUrl: string): Promise<Evidence[]> {
+export async function collectSiteEvidence(normalizedUrl: string): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
   const evidence: Evidence[] = []
   const homepage = new URL(normalizedUrl)
@@ -120,7 +203,7 @@ async function collectSiteEvidence(normalizedUrl: string): Promise<Evidence[]> {
       url: homepage.toString(),
       snippet: 'The submitted store URL uses HTTPS.',
       sentiment: 'positive',
-      weight: 3,
+      weight: 1,
       observedAt,
     })
   } else {
@@ -158,85 +241,104 @@ async function collectSiteEvidence(normalizedUrl: string): Promise<Evidence[]> {
     url: homepage.toString(),
     snippet: `The homepage responded with HTTP ${home.status}.`,
     sentiment: 'positive',
-    weight: 4,
+    weight: 2,
     observedAt,
   })
 
-  const text = htmlToText(home.html)
+  const homepageText = htmlToText(home.html)
   const links = extractPolicyLinks(home.html, homepage)
-  const hasEmail = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(text)
-  const hasPolicyTerms = /(return|refund|shipping|delivery|privacy|terms)/i.test(text)
-  const hasBusinessDetails = /(company|address|registered|business|contact|support)/i.test(text)
-  const hasCheckoutSignal = /(cart|checkout|shop now|add to cart|payment)/i.test(text)
+  const policyPages = await collectPolicyPages(links.slice(0, 5), observedAt)
+  const policyText = policyPages.map((page) => htmlToText(page.html)).join(' ')
+  const combinedText = `${homepageText} ${policyText}`
+  const hasContact = hasContactDetails(combinedText)
+  const policyCoverage = countPolicyTypes(combinedText, links)
+  const hasCommerceIntent = /(cart|checkout|shop now|add to cart|payment|buy now|sale|product)/i.test(
+    homepageText,
+  )
 
-  if (hasEmail || hasBusinessDetails) {
+  if (hasCommerceIntent) {
     evidence.push({
       sourceType: 'store-site',
-      title: 'Visible contact or business details',
+      title: 'Storefront shopping signals found',
       url: homepage.toString(),
-      snippet: 'The homepage includes contact or business-identifying language.',
-      sentiment: 'positive',
-      weight: 5,
-      observedAt,
-    })
-  } else {
-    evidence.push({
-      sourceType: 'store-site',
-      title: 'Limited contact details on homepage',
-      url: homepage.toString(),
-      snippet: 'No clear email, support, contact, or business identity signal was found on the homepage.',
-      sentiment: 'negative',
-      weight: 5,
+      snippet: 'The site appears to present products, purchase flows, or payment-related language.',
+      sentiment: 'neutral',
+      weight: 2,
       observedAt,
     })
   }
 
-  if (hasPolicyTerms || links.length > 0) {
+  if (hasContact) {
     evidence.push({
       sourceType: 'store-site',
-      title: 'Policy links or policy language found',
+      title: 'Visible contact or business details',
       url: homepage.toString(),
-      snippet: 'The homepage appears to reference customer policies such as returns, shipping, privacy, or terms.',
+      snippet: 'The checked pages include contact or business-identifying language.',
       sentiment: 'positive',
-      weight: 4,
+      weight: 5,
       observedAt,
     })
-  } else if (hasCheckoutSignal) {
+  } else if (hasCommerceIntent) {
     evidence.push({
       sourceType: 'store-site',
-      title: 'Shopping signals without clear policies',
+      title: 'Limited contact details on store pages',
       url: homepage.toString(),
-      snippet: 'The site appears to sell products, but clear customer-policy language was not found on the homepage.',
+      snippet: 'No clear email, phone, support, contact, address, or business identity signal was found.',
       sentiment: 'negative',
       weight: 6,
       observedAt,
     })
   }
 
-  const policyPages: Array<Evidence | null> = await Promise.all(
-    links.slice(0, 5).map(async (url) => {
-      const page = await fetchPage(url)
+  if (policyCoverage >= 2 || links.length >= 2) {
+    evidence.push({
+      sourceType: 'store-site',
+      title: 'Customer policy coverage found',
+      url: homepage.toString(),
+      snippet: 'The checked pages reference multiple customer policy areas such as returns, shipping, privacy, or terms.',
+      sentiment: 'positive',
+      weight: 5,
+      observedAt,
+    })
+  } else if (policyCoverage === 1 || links.length === 1) {
+    evidence.push({
+      sourceType: 'store-site',
+      title: 'Limited customer policy coverage found',
+      url: homepage.toString(),
+      snippet: 'The checked pages reference at least one customer policy area, but coverage appears limited.',
+      sentiment: 'positive',
+      weight: 3,
+      observedAt,
+    })
+  } else if (hasCommerceIntent) {
+    evidence.push({
+      sourceType: 'store-site',
+      title: 'Shopping signals without clear policies',
+      url: homepage.toString(),
+      snippet: 'The site appears to sell products, but clear customer-policy language was not found.',
+      sentiment: 'negative',
+      weight: 7,
+      observedAt,
+    })
+  }
 
-      if (!page.ok) {
-        return null
-      }
-
-      return {
+  return [
+    ...evidence,
+    ...policyPages.map(
+      (page): Evidence => ({
         sourceType: 'store-site',
-        title: `Customer policy page found: ${new URL(url).pathname}`,
-        url,
-        snippet: extractTitle(page.html) ?? 'A linked customer policy page responded successfully.',
+        title: `Customer policy page found: ${new URL(page.url).pathname}`,
+        url: page.url,
+        snippet: page.title ?? 'A linked customer policy page responded successfully.',
         sentiment: 'positive',
-        weight: 3,
+        weight: 2,
         observedAt,
-      } satisfies Evidence
-    }),
-  )
-
-  return [...evidence, ...policyPages.filter((item): item is Evidence => Boolean(item))]
+      }),
+    ),
+  ]
 }
 
-async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
+export async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
 
   try {
@@ -258,7 +360,6 @@ async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
 
     const data = (await response.json()) as {
       events?: Array<{ eventAction?: string; eventDate?: string }>
-      registrar?: string
     }
     const registration = data.events?.find((event) =>
       /registration|registered/i.test(event.eventAction ?? ''),
@@ -268,11 +369,39 @@ async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
       ? Math.floor((Date.now() - new Date(registeredAt).getTime()) / 86_400_000)
       : null
 
-    if (domainAgeDays !== null && domainAgeDays < 90) {
+    if (domainAgeDays === null) {
       return [
         {
           sourceType: 'rdap',
-          title: 'Domain appears recently registered',
+          title: 'RDAP record found without registration age',
+          url: `https://rdap.org/domain/${hostname}`,
+          snippet: 'RDAP returned a public domain record, but no registration date was available.',
+          sentiment: 'neutral',
+          weight: 2,
+          observedAt,
+        },
+      ]
+    }
+
+    if (domainAgeDays < 30) {
+      return [
+        {
+          sourceType: 'rdap',
+          title: 'Domain registered less than 30 days ago',
+          url: `https://rdap.org/domain/${hostname}`,
+          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
+          sentiment: 'negative',
+          weight: 8,
+          observedAt,
+        },
+      ]
+    }
+
+    if (domainAgeDays < 90) {
+      return [
+        {
+          sourceType: 'rdap',
+          title: 'Domain registered less than 90 days ago',
           url: `https://rdap.org/domain/${hostname}`,
           snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
@@ -282,16 +411,42 @@ async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
       ]
     }
 
+    if (domainAgeDays < 365) {
+      return [
+        {
+          sourceType: 'rdap',
+          title: 'Domain registered less than one year ago',
+          url: `https://rdap.org/domain/${hostname}`,
+          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
+          sentiment: 'negative',
+          weight: 3,
+          observedAt,
+        },
+      ]
+    }
+
+    if (domainAgeDays > 1095) {
+      return [
+        {
+          sourceType: 'rdap',
+          title: 'Domain older than three years',
+          url: `https://rdap.org/domain/${hostname}`,
+          snippet: `RDAP registration date: ${registeredAt}.`,
+          sentiment: 'positive',
+          weight: 7,
+          observedAt,
+        },
+      ]
+    }
+
     return [
       {
         sourceType: 'rdap',
-        title: registeredAt ? 'Domain registration data found' : 'RDAP record found',
+        title: 'Domain older than one year',
         url: `https://rdap.org/domain/${hostname}`,
-        snippet: registeredAt
-          ? `RDAP registration date: ${registeredAt}.`
-          : 'RDAP returned a public domain record.',
-        sentiment: domainAgeDays !== null && domainAgeDays > 365 ? 'positive' : 'neutral',
-        weight: domainAgeDays !== null && domainAgeDays > 365 ? 4 : 2,
+        snippet: `RDAP registration date: ${registeredAt}.`,
+        sentiment: 'positive',
+        weight: 4,
         observedAt,
       },
     ]
@@ -310,7 +465,219 @@ async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
   }
 }
 
-async function collectTavilyEvidence(
+export async function collectThreatListEvidence(
+  request: StoreSafetyRequest,
+  env: Pick<ResearchEnv, 'GOOGLE_WEB_RISK_API_KEY'>,
+): Promise<Evidence[]> {
+  const results = await Promise.allSettled([
+    collectUrlhausEvidence(request.normalizedUrl, request.hostname),
+    collectPhishTankEvidence(request.normalizedUrl),
+    collectWebRiskEvidence(request.normalizedUrl, env),
+  ])
+
+  return results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+}
+
+export async function collectUrlhausEvidence(
+  normalizedUrl: string,
+  hostname: string,
+): Promise<Evidence[]> {
+  const observedAt = new Date().toISOString()
+
+  try {
+    const [urlResult, hostResult] = await Promise.allSettled([
+      queryUrlhaus('url', { url: normalizedUrl }),
+      queryUrlhaus('host', { host: hostname }),
+    ])
+    const matchedUrl =
+      urlResult.status === 'fulfilled' && urlhausHasMatch(urlResult.value)
+        ? urlResult.value
+        : null
+    const matchedHost =
+      hostResult.status === 'fulfilled' && urlhausHasMatch(hostResult.value)
+        ? hostResult.value
+        : null
+
+    if (matchedUrl || matchedHost) {
+      const match = matchedUrl ?? matchedHost
+      const matchedRecord = match?.urls?.[0]
+      const threat = match?.threat ?? matchedRecord?.threat ?? 'malware URL listing'
+
+      return [
+        {
+          sourceType: 'technical',
+          title: matchedUrl
+            ? 'URLhaus malware listing found'
+            : 'URLhaus host malware listings found',
+          url: 'https://urlhaus.abuse.ch/',
+          snippet: `URLhaus returned an active match for ${matchedUrl ? normalizedUrl : hostname}: ${threat}.`,
+          sentiment: 'negative',
+          weight: matchedUrl ? 10 : 9,
+          observedAt,
+        },
+      ]
+    }
+
+    if (urlResult.status === 'rejected' && hostResult.status === 'rejected') {
+      return [providerUnavailableEvidence('URLhaus malware check unavailable', observedAt)]
+    }
+
+    return [
+      {
+        sourceType: 'technical',
+        title: 'No URLhaus malware listing found',
+        url: 'https://urlhaus.abuse.ch/',
+        snippet: 'URLhaus did not return a malware URL match for the submitted store.',
+        sentiment: 'neutral',
+        weight: 1,
+        observedAt,
+      },
+    ]
+  } catch {
+    return [providerUnavailableEvidence('URLhaus malware check unavailable', observedAt)]
+  }
+}
+
+export async function collectPhishTankEvidence(normalizedUrl: string): Promise<Evidence[]> {
+  const observedAt = new Date().toISOString()
+
+  try {
+    const response = await fetchWithTimeout('https://checkurl.phishtank.com/checkurl/', 6500, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'user-agent':
+          'IsSafeStoreBot/1.0 (+https://issafe.store; store safety public signal checker)',
+      },
+      body: new URLSearchParams({
+        url: normalizedUrl,
+        format: 'json',
+      }),
+    })
+
+    if (!response.ok) {
+      return [providerUnavailableEvidence('PhishTank phishing check unavailable', observedAt)]
+    }
+
+    const result = (await response.json()) as PhishTankResponse
+    const details = result.results
+
+    if (details?.in_database && details.verified && details.valid !== false) {
+      return [
+        {
+          sourceType: 'technical',
+          title: 'PhishTank verified phishing match found',
+          url: 'https://phishtank.org/',
+          snippet: `PhishTank has a verified phishing record for this URL${details.phish_id ? ` (ID ${details.phish_id})` : ''}.`,
+          sentiment: 'negative',
+          weight: 10,
+          observedAt,
+        },
+      ]
+    }
+
+    if (details?.in_database) {
+      return [
+        {
+          sourceType: 'technical',
+          title: 'PhishTank unverified phishing record found',
+          url: 'https://phishtank.org/',
+          snippet: 'PhishTank has an unverified record for this URL.',
+          sentiment: 'negative',
+          weight: 8,
+          observedAt,
+        },
+      ]
+    }
+
+    return [
+      {
+        sourceType: 'technical',
+        title: 'No PhishTank phishing record found',
+        url: 'https://phishtank.org/',
+        snippet: 'PhishTank did not return a phishing database match for this URL.',
+        sentiment: 'neutral',
+        weight: 1,
+        observedAt,
+      },
+    ]
+  } catch {
+    return [providerUnavailableEvidence('PhishTank phishing check unavailable', observedAt)]
+  }
+}
+
+export async function collectWebRiskEvidence(
+  normalizedUrl: string,
+  env: Pick<ResearchEnv, 'GOOGLE_WEB_RISK_API_KEY'>,
+): Promise<Evidence[]> {
+  const observedAt = new Date().toISOString()
+
+  if (!env.GOOGLE_WEB_RISK_API_KEY) {
+    return [
+      {
+        sourceType: 'technical',
+        title: 'Google Web Risk is not configured',
+        snippet: 'Set GOOGLE_WEB_RISK_API_KEY to include Google Web Risk threat-list checks.',
+        sentiment: 'neutral',
+        weight: 1,
+        observedAt,
+      },
+    ]
+  }
+
+  try {
+    const params = new URLSearchParams({
+      uri: normalizedUrl,
+      key: env.GOOGLE_WEB_RISK_API_KEY,
+    })
+
+    for (const threatType of WEB_RISK_THREAT_TYPES) {
+      params.append('threatTypes', threatType)
+    }
+
+    const response = await fetchWithTimeout(
+      `https://webrisk.googleapis.com/v1/uris:search?${params.toString()}`,
+      6500,
+    )
+
+    if (!response.ok) {
+      return [providerUnavailableEvidence('Google Web Risk check unavailable', observedAt)]
+    }
+
+    const result = (await response.json()) as WebRiskResponse
+    const threatTypes = result.threat?.threatTypes ?? []
+
+    if (threatTypes.length > 0) {
+      return [
+        {
+          sourceType: 'technical',
+          title: 'Google Web Risk threat match found',
+          url: 'https://cloud.google.com/web-risk',
+          snippet: `Google Web Risk matched this URL against: ${threatTypes.join(', ')}.`,
+          sentiment: 'negative',
+          weight: 10,
+          observedAt,
+        },
+      ]
+    }
+
+    return [
+      {
+        sourceType: 'technical',
+        title: 'No Google Web Risk threat match found',
+        url: 'https://cloud.google.com/web-risk',
+        snippet: 'Google Web Risk returned no threat-list match for this URL.',
+        sentiment: 'neutral',
+        weight: 1,
+        observedAt,
+      },
+    ]
+  } catch {
+    return [providerUnavailableEvidence('Google Web Risk check unavailable', observedAt)]
+  }
+}
+
+export async function collectTavilyEvidence(
   hostname: string,
   env: Pick<ResearchEnv, 'TAVILY_API_KEY'>,
 ): Promise<Evidence[]> {
@@ -333,27 +700,79 @@ async function collectTavilyEvidence(
   const responses = await Promise.allSettled(
     queries.map((query) => searchTavily(query, env.TAVILY_API_KEY ?? '')),
   )
-
-  return responses.flatMap((response) => {
+  const evidence = responses.flatMap((response) => {
     if (response.status === 'rejected') {
       return []
     }
 
-    return (response.value.results ?? []).slice(0, 4).map((result) =>
-      tavilyResultToEvidence(result, observedAt),
-    )
+    return (response.value.results ?? [])
+      .filter((result) => typeof result.score !== 'number' || result.score >= 0.5)
+      .slice(0, 4)
+      .map((result) => tavilyResultToEvidence(result, observedAt))
   })
+
+  if (evidence.length === 0) {
+    return [providerUnavailableEvidence('External reputation search returned no usable results', observedAt)]
+  }
+
+  return evidence
 }
 
-export function buildTavilyQueries(hostname: string) {
+export function buildTavilyQueries(hostname: string): TavilyQuery[] {
   return [
-    `"${hostname}" reviews`,
-    `"${hostname}" scam OR fraud OR complaints`,
-    `"${hostname}" Trustpilot Reddit refund`,
+    { query: `"${hostname}" reviews` },
+    { query: `"${hostname}" scam OR fraud OR complaints` },
+    { query: `"${hostname}" Trustpilot OR Reddit OR BBB OR ScamAdviser` },
+    {
+      query: `"${hostname}"`,
+      includeDomains: ['trustpilot.com', 'reddit.com', 'bbb.org', 'scamadviser.com'],
+    },
   ]
 }
 
-async function searchTavily(query: string, apiKey: string): Promise<TavilyResponse> {
+export async function classifyEvidenceFactors(
+  request: StoreSafetyRequest,
+  evidence: Evidence[],
+  env: Pick<ResearchEnv, 'AI' | 'AI_MODEL'>,
+): Promise<RiskFactor[]> {
+  if (!env.AI || evidence.length === 0) {
+    return []
+  }
+
+  const prompt = [
+    'Classify public store-safety evidence into fixed risk factors.',
+    'Return strict JSON only, with shape: {"factors":[{"key":"threat_list|domain_age|site_integrity|contact_identity|policy_completeness|independent_reputation|commerce_intent","sentiment":"positive|neutral|negative","severity":"low|medium|high|critical","confidence":0-100,"reason":"short reason"}]}.',
+    'Do not include a score or recommendation.',
+    `Store: ${request.hostname}`,
+    'Evidence:',
+    ...evidence.slice(0, 14).map((item) => `- [${item.sourceType}/${item.sentiment}/${item.weight}] ${item.title}: ${item.snippet}`),
+  ].join('\n')
+
+  try {
+    const response = (await env.AI.run(env.AI_MODEL ?? '@cf/zai-org/glm-4.7-flash', {
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You classify evidence for deterministic store-safety scoring. Return valid JSON only.',
+        },
+        { role: 'user', content: prompt },
+      ],
+    })) as WorkersAiTextResponse
+    const text = extractAiText(response)
+    const parsed = parseJsonObject(text) as { factors?: unknown[] } | null
+
+    if (!parsed || !Array.isArray(parsed.factors)) {
+      return []
+    }
+
+    return parsed.factors.flatMap(parseRiskFactor)
+  } catch {
+    return []
+  }
+}
+
+async function searchTavily(query: TavilyQuery, apiKey: string): Promise<TavilyResponse> {
   const response = await fetchWithTimeout('https://api.tavily.com/search', 8000, {
     method: 'POST',
     headers: {
@@ -361,12 +780,13 @@ async function searchTavily(query: string, apiKey: string): Promise<TavilyRespon
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      query,
+      query: query.query,
       search_depth: 'basic',
       include_answer: false,
       include_raw_content: false,
       include_images: false,
       max_results: 5,
+      ...(query.includeDomains ? { include_domains: query.includeDomains } : {}),
     }),
   })
 
@@ -377,13 +797,14 @@ async function searchTavily(query: string, apiKey: string): Promise<TavilyRespon
   return (await response.json()) as TavilyResponse
 }
 
-function tavilyResultToEvidence(result: TavilyResult, observedAt: string): Evidence {
+export function tavilyResultToEvidence(result: TavilyResult, observedAt: string): Evidence {
   const title = result.title ?? 'Search result'
   const snippet = result.content ?? result.url ?? 'External search result.'
-  const haystack = `${title} ${snippet}`.toLowerCase()
+  const haystack = `${title} ${snippet} ${result.url ?? ''}`.toLowerCase()
+  const hasStrongNegativeTerm = STRONG_NEGATIVE_TERMS.some((term) => haystack.includes(term))
   const hasNegativeTerm = NEGATIVE_TERMS.some((term) => haystack.includes(term))
   const hasPositiveTerm = POSITIVE_TERMS.some((term) => haystack.includes(term))
-  const sourceType = /trustpilot|reviews?|reddit|complaints?/i.test(haystack)
+  const sourceType = /trustpilot|reviews?|reddit|complaints?|bbb|scamadviser/i.test(haystack)
     ? 'review'
     : 'search-result'
 
@@ -392,8 +813,8 @@ function tavilyResultToEvidence(result: TavilyResult, observedAt: string): Evide
     title,
     url: result.url,
     snippet,
-    sentiment: hasNegativeTerm ? 'negative' : hasPositiveTerm ? 'positive' : 'neutral',
-    weight: hasNegativeTerm ? 5 : hasPositiveTerm ? 3 : 2,
+    sentiment: hasStrongNegativeTerm || hasNegativeTerm ? 'negative' : hasPositiveTerm ? 'positive' : 'neutral',
+    weight: hasStrongNegativeTerm ? 7 : hasNegativeTerm ? 4 : hasPositiveTerm ? 4 : 2,
     observedAt,
   }
 }
@@ -432,13 +853,7 @@ async function summarizeReport(
       ],
     })) as WorkersAiTextResponse
 
-    return (
-      response.response ??
-      response.text ??
-      response.choices?.[0]?.message?.content ??
-      response.choices?.[0]?.text ??
-      fallback
-    )
+    return extractAiText(response) ?? fallback
   } catch {
     return fallback
   }
@@ -458,6 +873,67 @@ function buildFallbackSummary(hostname: string, recommendation: string) {
   }
 
   return `${hostname} has mixed public signals. Use caution, check independent reviews, and prefer payment methods with buyer protection.`
+}
+
+async function collectPolicyPages(urls: string[], observedAt: string): Promise<PolicyPage[]> {
+  const pages = await Promise.all(
+    urls.map(async (url) => {
+      const page = await fetchPage(url)
+
+      if (!page.ok) {
+        return null
+      }
+
+      return {
+        url,
+        html: page.html,
+        title: extractTitle(page.html),
+      }
+    }),
+  )
+
+  return pages.filter((page): page is PolicyPage => Boolean(page))
+}
+
+async function queryUrlhaus(path: 'host' | 'url', body: Record<string, string>) {
+  const response = await fetchWithTimeout(`https://urlhaus-api.abuse.ch/v1/${path}/`, 6500, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/x-www-form-urlencoded',
+      'user-agent':
+        'IsSafeStoreBot/1.0 (+https://issafe.store; store safety public signal checker)',
+    },
+    body: new URLSearchParams(body),
+  })
+
+  if (!response.ok) {
+    throw new Error(`URLhaus check failed with HTTP ${response.status}`)
+  }
+
+  return (await response.json()) as UrlhausResponse
+}
+
+function urlhausHasMatch(response: UrlhausResponse) {
+  if (response.query_status !== 'ok') {
+    return false
+  }
+
+  if (response.url || response.url_status || response.threat) {
+    return true
+  }
+
+  return Boolean(response.urls?.length)
+}
+
+function providerUnavailableEvidence(title: string, observedAt: string): Evidence {
+  return {
+    sourceType: 'technical',
+    title,
+    snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+    sentiment: 'neutral',
+    weight: 1,
+    observedAt,
+  }
 }
 
 async function fetchPage(url: string) {
@@ -528,7 +1004,7 @@ function extractPolicyLinks(html: string, baseUrl: URL) {
 }
 
 function extractTitle(html: string) {
-  return html.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/\s+/g, ' ').trim()
+  return html.match(/<title[^>]*>(.*?)<\/title>/is)?.[1]?.replace(/\s+/g, ' ').trim() ?? null
 }
 
 function htmlToText(html: string) {
@@ -540,4 +1016,99 @@ function htmlToText(html: string) {
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function hasContactDetails(text: string) {
+  return (
+    /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(text) ||
+    /\+?\d[\d\s().-]{7,}\d/.test(text) ||
+    /(registered office|business address|company number|vat|tax id|support|contact us|customer service)/i.test(
+      text,
+    )
+  )
+}
+
+function countPolicyTypes(text: string, links: string[]) {
+  const haystack = `${text} ${links.join(' ')}`.toLowerCase()
+  const types = [
+    /return|refund/,
+    /shipping|delivery/,
+    /privacy/,
+    /terms|conditions/,
+  ]
+
+  return types.filter((pattern) => pattern.test(haystack)).length
+}
+
+function extractAiText(response: WorkersAiTextResponse) {
+  return (
+    response.response ??
+    response.text ??
+    response.choices?.[0]?.message?.content ??
+    response.choices?.[0]?.text ??
+    null
+  )
+}
+
+function parseJsonObject(text: string | null) {
+  if (!text) {
+    return null
+  }
+
+  const trimmed = text.trim()
+  const withoutFence = trimmed
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+  const jsonStart = withoutFence.indexOf('{')
+  const jsonEnd = withoutFence.lastIndexOf('}')
+
+  if (jsonStart === -1 || jsonEnd === -1 || jsonEnd < jsonStart) {
+    return null
+  }
+
+  try {
+    return JSON.parse(withoutFence.slice(jsonStart, jsonEnd + 1)) as unknown
+  } catch {
+    return null
+  }
+}
+
+function parseRiskFactor(value: unknown): RiskFactor[] {
+  if (!value || typeof value !== 'object') {
+    return []
+  }
+
+  const factor = value as Partial<RiskFactor>
+
+  if (!isRiskFactorKey(factor.key)) {
+    return []
+  }
+
+  return [
+    {
+      key: factor.key,
+      sentiment: isSentiment(factor.sentiment) ? factor.sentiment : 'neutral',
+      severity: isSeverity(factor.severity) ? factor.severity : 'low',
+      confidence: clamp(Math.round(Number(factor.confidence) || 0), 0, 100),
+      reason: String(factor.reason ?? factor.key).slice(0, 180),
+    },
+  ]
+}
+
+function isRiskFactorKey(value: unknown): value is RiskFactorKey {
+  return typeof value === 'string' && RISK_FACTOR_KEYS.includes(value as RiskFactorKey)
+}
+
+function isSentiment(value: unknown): value is Evidence['sentiment'] {
+  return value === 'positive' || value === 'neutral' || value === 'negative'
+}
+
+function isSeverity(value: unknown): value is RiskFactor['severity'] {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'critical'
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
 }

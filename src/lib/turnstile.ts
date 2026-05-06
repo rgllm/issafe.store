@@ -4,7 +4,7 @@ type TurnstileResponse = {
 }
 
 export async function verifyTurnstileToken(token: string | undefined, env: Env) {
-  if (!env.TURNSTILE_SECRET_KEY) {
+  if (!env.TURNSTILE_SITE_KEY || !env.TURNSTILE_SECRET_KEY) {
     return { success: true, skipped: true }
   }
 
