@@ -8,6 +8,17 @@ export default function Footer() {
         <span className="text-center text-pretty">
           Public-signal risk assessment only. Does not guarantee merchant, purchase, or delivery safety.
         </span>
+        <span>
+          Made by{' '}
+          <a
+            href="https://rgllm.com"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-foreground no-underline hover:text-primary"
+          >
+            Rogério
+          </a>
+        </span>
       </div>
     </footer>
   )
