@@ -9,7 +9,7 @@
   --card-foreground: oklch(0.18 0.015 255);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.18 0.015 255);
-  --primary: oklch(0.5 0.19 258);
+  --primary: #289e62;
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.94 0.006 247);
   --secondary-foreground: oklch(0.32 0.015 255);
@@ -21,9 +21,9 @@
   --destructive-foreground: oklch(1 0 0);
   --border: oklch(0.86 0.008 247);
   --input: oklch(1 0 0);
-  --ring: oklch(0.5 0.19 258);
+  --ring: #289e62;
   --radius: 0.375rem;
-  --safe: oklch(0.54 0.16 152);
+  --safe: #289e62;
   --warning: oklch(0.72 0.17 72);
   --danger: oklch(0.57 0.22 27);
 
@@ -54,7 +54,7 @@
   --card-foreground: oklch(0.94 0.006 240);
   --popover: oklch(0.15 0.015 245);
   --popover-foreground: oklch(0.94 0.006 240);
-  --primary: oklch(0.58 0.16 228);
+  --primary: #4fd78e;
   --primary-foreground: oklch(0.1 0.01 240);
   --secondary: oklch(0.2 0.02 245);
   --secondary-foreground: oklch(0.94 0.006 240);
@@ -66,8 +66,8 @@
   --destructive-foreground: oklch(0.98 0 0);
   --border: oklch(0.24 0.02 245);
   --input: oklch(0.24 0.02 245);
-  --ring: oklch(0.58 0.16 228);
-  --safe: oklch(0.56 0.15 152);
+  --ring: #4fd78e;
+  --safe: #4fd78e;
   --warning: oklch(0.72 0.17 65);
   --danger: oklch(0.6 0.22 27);
   --line-strong: oklch(0.34 0.024 245);
@@ -84,7 +84,7 @@
     --card-foreground: oklch(0.94 0.006 240);
     --popover: oklch(0.15 0.015 245);
     --popover-foreground: oklch(0.94 0.006 240);
-    --primary: oklch(0.58 0.16 228);
+    --primary: #4fd78e;
     --primary-foreground: oklch(0.1 0.01 240);
     --secondary: oklch(0.2 0.02 245);
     --secondary-foreground: oklch(0.94 0.006 240);
@@ -96,8 +96,8 @@
     --destructive-foreground: oklch(0.98 0 0);
     --border: oklch(0.24 0.02 245);
     --input: oklch(0.24 0.02 245);
-    --ring: oklch(0.58 0.16 228);
-    --safe: oklch(0.56 0.15 152);
+    --ring: #4fd78e;
+    --safe: #4fd78e;
     --warning: oklch(0.72 0.17 65);
     --danger: oklch(0.6 0.22 27);
     --line-strong: oklch(0.34 0.024 245);

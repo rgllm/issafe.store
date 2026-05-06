@@ -10,6 +10,7 @@ import {
   Star,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
+import { BrandLogo } from '../components/BrandLogo'
 import { TurnstileWidget } from '../components/TurnstileWidget'
 import type { StoreSafetyReport } from '../types/report'
 
@@ -139,11 +140,7 @@ function HomePage() {
     <main className="flex min-h-[calc(100vh-49px)] flex-col bg-background font-sans">
       <section className="px-6 py-20">
         <div className="mx-auto flex max-w-2xl flex-col items-center gap-8 text-center">
-          <div className="select-none text-5xl font-extrabold leading-none tracking-tight">
-            <span className="text-foreground">is</span>
-            <span className="text-primary">safe</span>
-            <span className="font-light text-muted-foreground">.store</span>
-          </div>
+          <BrandLogo size="lg" />
 
           <div className="flex flex-col gap-2">
             <h1 className="m-0 text-balance text-3xl font-bold text-foreground">

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="500" height="500" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Green Gradient for the Padlock -->
+    <linearGradient id="lockGradient" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#4FD78E"/>
+      <stop offset="100%" stop-color="#289E62"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Lock Shackle -->
+  <path d="M 138 225 A 112 112 0 0 1 362 225" fill="none" stroke="url(#lockGradient)" stroke-width="50" stroke-linecap="butt"/>
+
+  <!-- Lock Body -->
+  <rect x="100" y="225" width="300" height="238" rx="38" fill="url(#lockGradient)"/>
+
+  <!-- White Checkmark -->
+  <path d="M 195 345 L 250 395 L 310 300" fill="none" stroke="white" stroke-width="35" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

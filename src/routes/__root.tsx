@@ -24,13 +24,85 @@ export const Route = createRootRoute({
       {
         name: 'description',
         content:
-          'Check a store URL before checkout. Get a risk score, confidence rating, and cited public evidence in seconds.',
+          'Check whether an online store looks safe before checkout. Paste a store URL to get a risk score, confidence rating, recommendation, and cited public evidence.',
+      },
+      {
+        name: 'keywords',
+        content:
+          'store safety checker, scam store checker, online shopping safety, ecommerce risk score, fraud check',
+      },
+      {
+        name: 'author',
+        content: 'rgllm',
+      },
+      {
+        name: 'robots',
+        content: 'index, follow',
+      },
+      {
+        name: 'theme-color',
+        content: '#289e62',
+      },
+      {
+        property: 'og:type',
+        content: 'website',
+      },
+      {
+        property: 'og:title',
+        content: 'IsSafe.store | Check store risk before you buy',
+      },
+      {
+        property: 'og:description',
+        content:
+          'Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.',
+      },
+      {
+        property: 'og:image',
+        content: '/logo512.png',
+      },
+      {
+        property: 'og:site_name',
+        content: 'IsSafe.store',
+      },
+      {
+        name: 'twitter:card',
+        content: 'summary',
+      },
+      {
+        name: 'twitter:title',
+        content: 'IsSafe.store | Check store risk before you buy',
+      },
+      {
+        name: 'twitter:description',
+        content:
+          'Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.',
+      },
+      {
+        name: 'twitter:image',
+        content: '/logo512.png',
       },
     ],
     links: [
       {
         rel: 'stylesheet',
         href: appCss,
+      },
+      {
+        rel: 'icon',
+        type: 'image/svg+xml',
+        href: '/logo.svg',
+      },
+      {
+        rel: 'apple-touch-icon',
+        href: '/logo192.png',
+      },
+      {
+        rel: 'manifest',
+        href: '/manifest.json',
+      },
+      {
+        rel: 'canonical',
+        href: 'https://issafe.store/',
       },
     ],
   }),
