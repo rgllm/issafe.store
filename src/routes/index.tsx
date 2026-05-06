@@ -1,14 +1,13 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import {
   AlertTriangle,
-  ArrowRight,
   Bot,
-  Database,
-  Globe2,
+  Clock,
+  DatabaseZap,
+  Globe,
   Loader2,
-  Search,
-  ShieldCheck,
-  TimerReset,
+  ShieldAlert,
+  Star,
 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { TurnstileWidget } from '../components/TurnstileWidget'
@@ -24,24 +23,42 @@ type ConfigResponse = {
   turnstileSiteKey: string | null
 }
 
-const ANALYSIS_STEPS = [
+const SIGNALS = [
   {
-    title: 'Validate the store URL',
+    icon: Clock,
+    title: 'Domain Age & History',
     description:
-      'We clean the URL and reject local, private, credentialed, and unsupported addresses before analysis starts.',
-    Icon: Globe2,
+      'We check when the domain was registered and whether ownership has changed hands. Newly registered domains or those with a history of transfers are a common indicator of disposable scam stores.',
   },
   {
-    title: 'Collect public trust signals',
+    icon: Globe,
+    title: 'WHOIS & Registration Data',
     description:
-      'The system checks reachable store pages, policy quality, domain metadata, and independent reputation results.',
-    Icon: Database,
+      'Public WHOIS records reveal the registrar, registration country, and privacy shielding status. Stores hiding all contact information behind privacy proxies score higher risk.',
   },
   {
-    title: 'Score first, summarize second',
+    icon: Star,
+    title: 'Review Platform Signals',
     description:
-      'Signals are deduplicated and scored with fixed rules. AI writes the summary, but it does not decide the score.',
-    Icon: Bot,
+      'We aggregate public complaint and review data from Trustpilot, Better Business Bureau, ScamAdviser, Reddit, and similar platforms to surface patterns of non-delivery, fraud, or disputes.',
+  },
+  {
+    icon: ShieldAlert,
+    title: 'Blocklist & Fraud Databases',
+    description:
+      'We cross-reference the store URL and domain against publicly maintained fraud blocklists, phishing databases, and community-reported scam registries.',
+  },
+  {
+    icon: DatabaseZap,
+    title: 'SSL & Technical Signals',
+    description:
+      "We verify the presence, validity, and issuing authority of the store's SSL certificate. Self-signed or recently-issued certificates on new domains elevate risk.",
+  },
+  {
+    icon: Bot,
+    title: 'AI-Powered Synthesis',
+    description:
+      'All collected signals are passed to an AI model that weighs evidence, resolves conflicts between sources, and generates a calibrated risk score, confidence rating, and plain-language recommendation.',
   },
 ]
 
@@ -119,137 +136,109 @@ function HomePage() {
   }
 
   return (
-    <main id="top" className="home-main">
-      <section className="home-section home-hero">
-        <div className="page-wrap">
-          <div className="hero-grid">
-            <div>
-              <p className="home-kicker">Risk check before checkout</p>
-              <h1 className="home-display">
-                Check a store before you pay
-              </h1>
-              <p className="home-lede">
-                Paste a store URL to get a risk score, confidence rating, and cited public evidence in seconds.
-              </p>
-              <div className="hero-trust-row" aria-label="Product highlights">
-                <span className="hero-trust-chip">
-                  <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                  Public evidence only
-                </span>
-                <span className="hero-trust-chip">
-                  <TimerReset className="h-3.5 w-3.5" aria-hidden="true" />
-                  Typical result in under 20s
-                </span>
-                <span className="hero-trust-chip">
-                  <Globe2 className="h-3.5 w-3.5" aria-hidden="true" />
-                  Works with global stores
-                </span>
-              </div>
-              <form onSubmit={handleSubmit} className="island-shell hero-form">
-                <label htmlFor="store-url" className="sr-only">
-                  Store URL
-                </label>
-                <div className="hero-form-row">
-                  <div className="relative min-w-0 flex-1">
-                    <Search
-                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--sea-ink-soft)]"
-                      aria-hidden="true"
-                    />
-                    <input
-                      id="store-url"
-                      value={url}
-                      onChange={(event) => setUrl(event.target.value)}
-                      placeholder="example-store.com"
-                      autoComplete="url"
-                      className="hero-input"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting || !url.trim()}
-                    className="cta-pill cta-pill-dark"
-                  >
-                    {isSubmitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    ) : (
-                      <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                    )}
-                    Get risk report
-                  </button>
-                </div>
+    <main className="flex min-h-[calc(100vh-49px)] flex-col bg-background font-sans">
+      <section className="px-6 py-20">
+        <div className="mx-auto flex max-w-2xl flex-col items-center gap-8 text-center">
+          <div className="select-none text-5xl font-extrabold leading-none tracking-tight">
+            <span className="text-foreground">is</span>
+            <span className="text-primary">safe</span>
+            <span className="font-light text-muted-foreground">.store</span>
+          </div>
 
-                <TurnstileWidget siteKey={turnstileSiteKey} onTokenChange={handleTurnstileTokenChange} />
+          <div className="flex flex-col gap-2">
+            <h1 className="m-0 text-balance text-3xl font-bold text-foreground">
+              Store Safety Risk Lookup
+            </h1>
+            <p className="m-0 max-w-lg text-pretty text-base leading-7 text-muted-foreground">
+              Paste any store URL to get a risk score, confidence rating, recommendation, and cited public evidence.
+            </p>
+          </div>
 
-                {error ? (
-                  <p className="m-0 mt-3 flex items-start gap-2 rounded-[10px] border border-[var(--risk-line)] bg-[var(--risk-bg)] px-3 py-2 text-sm font-medium text-[var(--signal-risk)]">
-                    <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
-                    {error}
-                  </p>
-                ) : null}
-              </form>
-              <p className="hero-note">
-                Uses public signals only. Not a guarantee of merchant or delivery safety.{' '}
-                <a href="#how-agent-works">See how the score works.</a>
+          <div className="flex w-full flex-col items-stretch gap-6">
+            <form onSubmit={handleSubmit} className="flex w-full flex-col items-stretch gap-3 sm:flex-row">
+              <label htmlFor="store-url" className="sr-only">
+                Store URL to check
+              </label>
+              <input
+                id="store-url"
+                type="text"
+                value={url}
+                onChange={(event) => setUrl(event.target.value)}
+                placeholder="Enter a store URL, e.g. example-store.com"
+                aria-label="Store URL to check"
+                className="min-h-12 flex-1 rounded-md border border-border bg-white px-4 py-3 text-sm text-foreground outline-none transition-all placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 dark:bg-input"
+                autoComplete="url"
+                spellCheck={false}
+              />
+              <button
+                type="submit"
+                disabled={isSubmitting || !url.trim()}
+                className="flex min-h-12 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+                {isSubmitting ? 'Checking...' : 'Check Store'}
+              </button>
+            </form>
+
+            <TurnstileWidget siteKey={turnstileSiteKey} onTokenChange={handleTurnstileTokenChange} />
+
+            {isSubmitting ? (
+              <p className="m-0 text-center text-sm text-muted-foreground">
+                Scanning public signals for{' '}
+                <span className="font-medium text-foreground">{url.trim()}</span>...
               </p>
-            </div>
-            <aside className="hero-visual-card" aria-hidden="true">
-              <div className="hero-orb hero-orb-1" />
-              <div className="hero-orb hero-orb-2" />
-              <div className="hero-orb hero-orb-3" />
-              <p className="home-kicker">Fast signal scan</p>
-              <div className="hero-metric-grid">
-                <article className="hero-metric">
-                  <p className="hero-metric-label">Policy signals</p>
-                  <p className="hero-metric-value">Clear</p>
-                </article>
-                <article className="hero-metric">
-                  <p className="hero-metric-label">Domain history</p>
-                  <p className="hero-metric-value">Established</p>
-                </article>
-                <article className="hero-metric">
-                  <p className="hero-metric-label">Risk level</p>
-                  <p className="hero-metric-value">Low</p>
-                </article>
-                <article className="hero-metric">
-                  <p className="hero-metric-label">Evidence confidence</p>
-                  <p className="hero-metric-value">High</p>
-                </article>
-              </div>
-              <div className="hero-feed">
-                <p className="hero-feed-title">Recent scan themes</p>
-                <div className="hero-feed-row">
-                  <span className="hero-feed-pill">New domain + aggressive discounts</span>
-                  <span className="hero-feed-pill">Missing return policy details</span>
-                  <span className="hero-feed-pill">Established store with strong signals</span>
-                </div>
-              </div>
-            </aside>
+            ) : null}
+
+            {error ? (
+              <p className="m-0 flex items-start gap-2 rounded-md border border-[var(--risk-line)] bg-[var(--risk-bg)] px-4 py-3 text-left text-sm font-medium text-[var(--signal-risk)]">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-none" aria-hidden="true" />
+                {error}
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
 
-      <section id="how-agent-works" className="home-section">
-        <div className="page-wrap">
-          <div className="home-section-head">
-            <p className="home-kicker">How IsSafe works</p>
-            <h2 className="home-section-title">Public evidence first. Consistent scoring second.</h2>
-            <p className="home-section-copy">
-              Every report follows the same transparent sequence so results stay consistent and auditable.
-            </p>
-          </div>
-          <div className="analysis-steps">
-            {ANALYSIS_STEPS.map(({ title, description, Icon }, index) => (
-              <article key={title} className="analysis-step-card">
-                <div className="analysis-step-top">
-                  <span className="analysis-step-icon">
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                  </span>
-                  <span className="analysis-step-count">0{index + 1}</span>
-                </div>
-                <h3>{title}</h3>
-                <p>{description}</p>
-              </article>
-            ))}
+      <div className="border-t border-border" />
+
+      <section id="how-we-check" className="px-6 py-16">
+        <div className="mx-auto max-w-5xl">
+          <div className="flex flex-col gap-10">
+            <div className="text-center">
+              <h2 className="m-0 text-balance text-2xl font-bold text-foreground">
+                How We Check a Store
+              </h2>
+              <p className="mx-auto mt-2 max-w-2xl text-pretty text-base leading-7 text-muted-foreground">
+                IsSafe.store combines structured public data sources with AI synthesis to produce a single, actionable risk assessment. No account required. No purchase data is used.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {SIGNALS.map((signal) => {
+                const Icon = signal.icon
+
+                return (
+                  <article
+                    key={signal.title}
+                    className="flex flex-col gap-3 rounded-md border border-border bg-white p-5 dark:bg-card"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/8">
+                        <Icon className="h-4 w-4 text-primary" aria-hidden="true" />
+                      </div>
+                      <h3 className="m-0 text-sm font-semibold text-foreground">{signal.title}</h3>
+                    </div>
+                    <p className="m-0 text-sm leading-relaxed text-muted-foreground">
+                      {signal.description}
+                    </p>
+                  </article>
+                )
+              })}
+            </div>
+
+            <div className="rounded-md border border-border bg-muted/50 px-5 py-3.5 text-pretty text-sm leading-6 text-muted-foreground">
+              <span className="font-semibold text-foreground">Note:</span> IsSafe.store relies entirely on publicly available signals. We do not access private merchant data, payment records, or order history. Results represent a best-effort public-signal assessment and should not be the sole basis for any financial decision.
+            </div>
           </div>
         </div>
       </section>
