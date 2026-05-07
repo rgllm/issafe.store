@@ -18,13 +18,16 @@ const SEVERITY_RANK = {
 } as const
 
 export type RiskFactorKey = (typeof FACTOR_KEYS)[number]
+type RiskSeverity = keyof typeof SEVERITY_RANK
+type SeverityImpactMap = Record<RiskSeverity, number>
 
 export type RiskFactor = {
   key: RiskFactorKey
   sentiment: Evidence['sentiment']
-  severity: keyof typeof SEVERITY_RANK
+  severity: RiskSeverity
   confidence: number
   reason: string
+  weight?: number
   providerGap?: boolean
 }
 
@@ -42,6 +45,61 @@ type RecommendationContext = {
   highReputationNegativeCount: number
   strongNegativeReputationCount: number
   hasIndependentReputation: boolean
+  sourceDiversity: number
+}
+
+const DEFAULT_FACTOR_WEIGHT = 5
+export const RECOMMENDATION_POLICY = {
+  minimumConfidenceForDecision: 42,
+  minimumCategoryCount: 4,
+  minimumCategoryCountWithReputation: 3,
+  minimumSourceDiversity: 2,
+  avoidScoreThreshold: 40,
+  avoidScoreThresholdWithHighNegative: 50,
+  likelySafeScoreThreshold: 60,
+  likelySafeConfidenceThreshold: 65,
+  likelySafeCategoryCount: 3,
+  likelySafeSourceDiversity: 3,
+  borderlineBandMin: 58,
+  borderlineBandMax: 64,
+  borderlineConfidenceFloor: 62,
+} as const
+
+const IMPACT_WEIGHTS: Record<
+  RiskFactorKey,
+  {
+    positive: SeverityImpactMap
+    negative: SeverityImpactMap
+  }
+> = {
+  threat_list: {
+    positive: { low: 0, medium: 0, high: 0, critical: 0 },
+    negative: { low: 10, medium: 25, high: 45, critical: 70 },
+  },
+  domain_age: {
+    positive: { low: 4, medium: 10, high: 14, critical: 14 },
+    negative: { low: 7, medium: 15, high: 24, critical: 45 },
+  },
+  site_integrity: {
+    positive: { low: 3, medium: 8, high: 10, critical: 10 },
+    negative: { low: 6, medium: 15, high: 28, critical: 45 },
+  },
+  contact_identity: {
+    positive: { low: 5, medium: 9, high: 11, critical: 11 },
+    negative: { low: 4, medium: 8, high: 14, critical: 45 },
+  },
+  policy_completeness: {
+    positive: { low: 5, medium: 9, high: 11, critical: 11 },
+    negative: { low: 5, medium: 10, high: 16, critical: 45 },
+  },
+  independent_reputation: {
+    positive: { low: 8, medium: 16, high: 18, critical: 18 },
+    negative: { low: 8, medium: 16, high: 25, critical: 45 },
+  },
+  commerce_intent: {
+    positive: { low: 4, medium: 4, high: 4, critical: 4 },
+    negative: { low: 5, medium: 10, high: 18, critical: 45 },
+  },
 }
 
 export function dedupeEvidence(evidence: Evidence[]) {
@@ -74,6 +132,7 @@ export function scoreEvidence(
 ): ScoreResult {
   const factors = buildRiskFactors(evidence, classifiedFactors)
   const categoryCount = countMeaningfulFactorCategories(factors)
+  const sourceDiversity = countEvidenceSourceDiversity(evidence)
   const providerGapCount = factors.filter((factor) => factor.providerGap).length
   const hasCriticalThreat = factors.some(
     (factor) =>
@@ -118,7 +177,8 @@ export function scoreEvidence(
     categoryCount * 9 +
     Math.min(24, evidence.length * 3) +
     Math.min(12, factors.length * 2) -
-    providerGapCount * 6
+    providerGapCount * 6 +
+    Math.min(8, sourceDiversity * 2)
   const confidence = hasCriticalThreat
     ? Math.max(80, clamp(Math.round(baseConfidence), 8, 96))
     : clamp(Math.round(baseConfidence), 8, 96)
@@ -134,6 +194,7 @@ export function scoreEvidence(
       highReputationNegativeCount,
       strongNegativeReputationCount,
       hasIndependentReputation,
+      sourceDiversity,
     }),
   }
 }
@@ -153,6 +214,7 @@ export function getRecommendation(
           highReputationNegativeCount: 0,
           strongNegativeReputationCount: 0,
           hasIndependentReputation: true,
+          sourceDiversity: 3,
         }
       : contextOrEvidenceCount
 
@@ -161,25 +223,49 @@ export function getRecommendation(
   }
 
   if (
-    confidence < 45 ||
-    (context.categoryCount < 4 &&
-      !(context.categoryCount >= 3 && context.hasIndependentReputation))
+    confidence < RECOMMENDATION_POLICY.minimumConfidenceForDecision ||
+    context.sourceDiversity < RECOMMENDATION_POLICY.minimumSourceDiversity ||
+    (context.categoryCount < RECOMMENDATION_POLICY.minimumCategoryCount &&
+      !(
+        context.categoryCount >= RECOMMENDATION_POLICY.minimumCategoryCountWithReputation &&
+        context.hasIndependentReputation
+      ))
   ) {
     return 'unknown'
   }
 
   if (
-    score < 45 &&
+    score < RECOMMENDATION_POLICY.avoidScoreThreshold &&
     (context.highNonReputationNegativeCount > 0 || context.highReputationNegativeCount >= 2)
   ) {
     return 'avoid'
   }
 
-  if (score < 55 && context.highNonReputationNegativeCount > 0) {
+  if (
+    score < RECOMMENDATION_POLICY.avoidScoreThresholdWithHighNegative &&
+    context.highNonReputationNegativeCount > 0
+  ) {
     return 'avoid'
   }
 
-  if (score >= 78 && context.highNegativeCount === 0 && context.hasIndependentReputation) {
+  if (
+    score >= RECOMMENDATION_POLICY.borderlineBandMin &&
+    score <= RECOMMENDATION_POLICY.borderlineBandMax &&
+    (!context.hasIndependentReputation ||
+      confidence < RECOMMENDATION_POLICY.borderlineConfidenceFloor)
+  ) {
+    return 'caution'
+  }
+
+  if (
+    score >= RECOMMENDATION_POLICY.likelySafeScoreThreshold &&
+    confidence >= RECOMMENDATION_POLICY.likelySafeConfidenceThreshold &&
+    context.categoryCount >= RECOMMENDATION_POLICY.likelySafeCategoryCount &&
+    context.sourceDiversity >= RECOMMENDATION_POLICY.likelySafeSourceDiversity &&
+    context.highNegativeCount === 0 &&
+    context.strongNegativeReputationCount === 0 &&
+    context.hasIndependentReputation
+  ) {
     return 'likely-safe'
   }
 
@@ -274,9 +360,33 @@ function getReputationNegativeImpact(negativeFactors: RiskFactor[]) {
   }
 
   const strongestReviewImpact = getStrongestImpact(serviceOrReviewFactors, getNegativeImpact)
-  const repeatedReviewImpact = Math.min(6, Math.max(0, serviceOrReviewFactors.length - 1) * 2)
+  const repeatedReviewCount = Math.max(0, serviceOrReviewFactors.length - 1)
+  const repeatedReviewImpact = Math.min(4, Math.ceil(Math.sqrt(repeatedReviewCount) * 2))
 
   return Math.min(18, strongestReviewImpact + repeatedReviewImpact)
+}
+
+function countEvidenceSourceDiversity(evidence: Evidence[]) {
+  const sources = new Set<string>()
+
+  for (const item of evidence) {
+    const normalizedHost = normalizeEvidenceHost(item.url)
+    sources.add(`${item.sourceType}:${normalizedHost}`)
+  }
+
+  return sources.size
+}
+
+function normalizeEvidenceHost(url?: string) {
+  if (!url) {
+    return 'unknown'
+  }
+
+  try {
+    return new URL(url).hostname.toLowerCase()
+  } catch {
+    return 'unknown'
+  }
 }
 
 function isConcreteReputationThreatFactor(factor: RiskFactor) {
@@ -286,63 +396,22 @@ function isConcreteReputationThreatFactor(factor: RiskFactor) {
 }
 
 function getPositiveImpact(factor: RiskFactor) {
-  if (factor.key === 'threat_list') {
-    return 0
-  }
-
-  if (factor.key === 'domain_age') {
-    return factor.severity === 'high' ? 14 : factor.severity === 'medium' ? 10 : 4
-  }
-
-  if (factor.key === 'site_integrity') {
-    return factor.severity === 'high' ? 10 : factor.severity === 'medium' ? 8 : 3
-  }
-
-  if (factor.key === 'independent_reputation') {
-    return factor.severity === 'high' ? 18 : factor.severity === 'medium' ? 16 : 8
-  }
-
-  if (factor.key === 'commerce_intent') {
-    return 4
-  }
-
-  return factor.severity === 'high' ? 11 : factor.severity === 'medium' ? 9 : 5
+  return getWeightedImpact(factor, IMPACT_WEIGHTS[factor.key].positive[factor.severity])
 }
 
 function getNegativeImpact(factor: RiskFactor) {
-  if (factor.severity === 'critical') {
-    return factor.key === 'threat_list' ? 70 : 45
+  return getWeightedImpact(factor, IMPACT_WEIGHTS[factor.key].negative[factor.severity])
+}
+
+function getWeightedImpact(factor: RiskFactor, baseImpact: number) {
+  if (baseImpact === 0) {
+    return 0
   }
 
-  if (factor.key === 'threat_list') {
-    return factor.severity === 'high' ? 45 : factor.severity === 'medium' ? 25 : 10
-  }
+  const weight = clamp(Math.round(factor.weight ?? DEFAULT_FACTOR_WEIGHT), 1, 10)
+  const multiplier = 0.8 + ((weight - 1) / 9) * 0.4
 
-  if (factor.key === 'domain_age') {
-    return factor.severity === 'high' ? 24 : factor.severity === 'medium' ? 15 : 7
-  }
-
-  if (factor.key === 'site_integrity') {
-    return factor.severity === 'high' ? 28 : factor.severity === 'medium' ? 15 : 6
-  }
-
-  if (factor.key === 'contact_identity') {
-    return factor.severity === 'high' ? 14 : factor.severity === 'medium' ? 8 : 4
-  }
-
-  if (factor.key === 'policy_completeness') {
-    return factor.severity === 'high' ? 16 : factor.severity === 'medium' ? 10 : 5
-  }
-
-  if (factor.key === 'independent_reputation') {
-    return factor.severity === 'high' ? 25 : factor.severity === 'medium' ? 16 : 8
-  }
-
-  if (factor.key === 'commerce_intent') {
-    return factor.severity === 'high' ? 18 : factor.severity === 'medium' ? 10 : 5
-  }
-
-  return factor.severity === 'high' ? 16 : factor.severity === 'medium' ? 8 : 4
+  return Math.round(baseImpact * multiplier)
 }
 
 function evidenceToFactors(item: Evidence): RiskFactor[] {
@@ -419,6 +488,7 @@ function createThreatFactor(item: Evidence, text: string): RiskFactor {
     sentiment: isNegative ? 'negative' : 'neutral',
     severity: isNegative ? 'critical' : 'low',
     confidence: isNegative ? 95 : providerGap ? 20 : 60,
+    weight: item.weight,
     providerGap,
     reason: item.title,
   })[0]
@@ -426,70 +496,70 @@ function createThreatFactor(item: Evidence, text: string): RiskFactor {
 
 function createDomainFactor(item: Evidence, text: string): RiskFactor {
   if (/less than 30|under 30|about [0-2]?\d days/.test(text)) {
-    return createFactor('domain_age', 'negative', 'high', 88, item.title)
+    return createFactor('domain_age', 'negative', 'high', 88, item.title, item.weight)
   }
 
   if (/30.+90|less than 90|recently registered/.test(text)) {
-    return createFactor('domain_age', 'negative', 'medium', 78, item.title)
+    return createFactor('domain_age', 'negative', 'medium', 78, item.title, item.weight)
   }
 
   if (/less than one year|less than 365|under one year/.test(text)) {
-    return createFactor('domain_age', 'negative', 'low', 65, item.title)
+    return createFactor('domain_age', 'negative', 'low', 65, item.title, item.weight)
   }
 
   if (/older than three years|more than three years|3\+ years|8\+ years/.test(text)) {
-    return createFactor('domain_age', 'positive', 'high', 82, item.title)
+    return createFactor('domain_age', 'positive', 'high', 82, item.title, item.weight)
   }
 
   if (/older than one year|more than one year|established domain/.test(text)) {
-    return createFactor('domain_age', 'positive', 'medium', 74, item.title)
+    return createFactor('domain_age', 'positive', 'medium', 74, item.title, item.weight)
   }
 
-  return createFactor('domain_age', item.sentiment, 'low', 45, item.title)
+  return createFactor('domain_age', item.sentiment, 'low', 45, item.title, item.weight)
 }
 
 function createSiteIntegrityFactor(item: Evidence, text: string): RiskFactor {
   if (/plain http|no https/.test(text)) {
-    return createFactor('site_integrity', 'negative', 'medium', 84, item.title)
+    return createFactor('site_integrity', 'negative', 'medium', 84, item.title, item.weight)
   }
 
   if (/blocked automated check|automated checker|bot protection/.test(text)) {
-    return createFactor('site_integrity', 'neutral', 'low', 50, item.title)
+    return createFactor('site_integrity', 'neutral', 'low', 50, item.title, item.weight)
   }
 
   if (/could not be reached|request failed|http 4|http 5/.test(text)) {
-    return createFactor('site_integrity', 'negative', 'high', 84, item.title)
+    return createFactor('site_integrity', 'negative', 'high', 84, item.title, item.weight)
   }
 
   if (/https is enabled|homepage is reachable|responded with http 2/.test(text)) {
-    return createFactor('site_integrity', 'positive', 'medium', 65, item.title)
+    return createFactor('site_integrity', 'positive', 'medium', 65, item.title, item.weight)
   }
 
-  return createFactor('site_integrity', item.sentiment, 'low', 42, item.title)
+  return createFactor('site_integrity', item.sentiment, 'low', 42, item.title, item.weight)
 }
 
 function createContactFactor(item: Evidence, text: string): RiskFactor {
   if (/limited contact|no clear email|no clear .*business|missing contact/.test(text)) {
-    return createFactor('contact_identity', 'negative', 'medium', 76, item.title)
+    return createFactor('contact_identity', 'negative', 'medium', 76, item.title, item.weight)
   }
 
   if (/visible contact|business details|business-identifying|registered office/.test(text)) {
-    return createFactor('contact_identity', 'positive', 'medium', 76, item.title)
+    return createFactor('contact_identity', 'positive', 'medium', 76, item.title, item.weight)
   }
 
-  return createFactor('contact_identity', item.sentiment, 'low', 42, item.title)
+  return createFactor('contact_identity', item.sentiment, 'low', 42, item.title, item.weight)
 }
 
 function createPolicyFactor(item: Evidence, text: string): RiskFactor {
   if (/without clear policies|policy language was not found|missing .*polic/.test(text)) {
-    return createFactor('policy_completeness', 'negative', 'high', 78, item.title)
+    return createFactor('policy_completeness', 'negative', 'high', 78, item.title, item.weight)
   }
 
   if (/policy coverage|policy page found|policy links|return|refund|shipping|privacy|terms/.test(text)) {
-    return createFactor('policy_completeness', 'positive', 'medium', 72, item.title)
+    return createFactor('policy_completeness', 'positive', 'medium', 72, item.title, item.weight)
   }
 
-  return createFactor('policy_completeness', item.sentiment, 'low', 40, item.title)
+  return createFactor('policy_completeness', item.sentiment, 'low', 40, item.title, item.weight)
 }
 
 function createReputationFactor(item: Evidence, text: string): RiskFactor {
@@ -501,7 +571,7 @@ function createReputationFactor(item: Evidence, text: string): RiskFactor {
     ) &&
     !isAmbiguousScamQuestion(text)
   ) {
-    return createFactor('independent_reputation', 'negative', 'high', 84, reason)
+    return createFactor('independent_reputation', 'negative', 'high', 84, reason, item.weight)
   }
 
   if (
@@ -509,15 +579,15 @@ function createReputationFactor(item: Evidence, text: string): RiskFactor {
       text,
     )
   ) {
-    return createFactor('independent_reputation', 'negative', 'low', 68, reason)
+    return createFactor('independent_reputation', 'negative', 'low', 68, reason, item.weight)
   }
 
   if (/complaint|refund issue|bad review|negative review/.test(text)) {
-    return createFactor('independent_reputation', 'negative', 'medium', 72, reason)
+    return createFactor('independent_reputation', 'negative', 'medium', 72, reason, item.weight)
   }
 
   if (/verified|trusted|positive reviews|good review/.test(text)) {
-    return createFactor('independent_reputation', 'positive', 'medium', 70, reason)
+    return createFactor('independent_reputation', 'positive', 'medium', 70, reason, item.weight)
   }
 
   const providerGap = /not configured|unavailable|failed|timeout|did not complete/.test(text)
@@ -527,6 +597,7 @@ function createReputationFactor(item: Evidence, text: string): RiskFactor {
     sentiment: item.sentiment,
     severity: 'low',
     confidence: providerGap ? 20 : 45,
+    weight: item.weight,
     providerGap,
     reason,
   })[0]
@@ -534,14 +605,14 @@ function createReputationFactor(item: Evidence, text: string): RiskFactor {
 
 function createCommerceFactor(item: Evidence, text: string): RiskFactor {
   if (/shopping signals without clear policies|sell products.*not found/.test(text)) {
-    return createFactor('commerce_intent', 'negative', 'medium', 72, item.title)
+    return createFactor('commerce_intent', 'negative', 'medium', 72, item.title, item.weight)
   }
 
   if (/cart|checkout|shop now|add to cart|payment|storefront shopping signals/.test(text)) {
-    return createFactor('commerce_intent', 'neutral', 'low', 48, item.title)
+    return createFactor('commerce_intent', 'neutral', 'low', 48, item.title, item.weight)
   }
 
-  return createFactor('commerce_intent', item.sentiment, 'low', 38, item.title)
+  return createFactor('commerce_intent', item.sentiment, 'low', 38, item.title, item.weight)
 }
 
 function isAmbiguousScamQuestion(text: string) {
@@ -558,15 +629,17 @@ function isAmbiguousScamQuestion(text: string) {
 function createFactor(
   key: RiskFactorKey,
   sentiment: Evidence['sentiment'],
-  severity: RiskFactor['severity'],
+  severity: RiskSeverity,
   confidence: number,
   reason: string,
+  weight = DEFAULT_FACTOR_WEIGHT,
 ): RiskFactor {
   return {
     key,
     sentiment,
     severity,
     confidence: clamp(Math.round(confidence), 0, 100),
+    weight: clamp(Math.round(weight), 1, 10),
     reason,
   }
 }
@@ -582,6 +655,7 @@ function normalizeRiskFactor(factor: RiskFactor): RiskFactor[] {
       sentiment: isSentiment(factor.sentiment) ? factor.sentiment : 'neutral',
       severity: isSeverity(factor.severity) ? factor.severity : 'low',
       confidence: clamp(Math.round(Number(factor.confidence) || 0), 0, 100),
+      weight: clamp(Math.round(Number(factor.weight) || DEFAULT_FACTOR_WEIGHT), 1, 10),
       reason: String(factor.reason ?? factor.key).slice(0, 180),
       providerGap: Boolean(factor.providerGap),
     },

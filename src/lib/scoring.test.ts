@@ -87,6 +87,105 @@ describe('scoreEvidence', () => {
     expect(result.recommendation).toBe('likely-safe')
   })
 
+  it('returns likely-safe for high-confidence stores above the relaxed threshold', () => {
+    const result = scoreEvidence(
+      [
+        ...basicStoreSignals,
+        createEvidence({
+          sourceType: 'store-site',
+          title: 'Visible contact or business details',
+          sentiment: 'positive',
+          weight: 5,
+        }),
+        createEvidence({
+          sourceType: 'store-site',
+          title: 'Customer policy coverage found',
+          sentiment: 'positive',
+          weight: 5,
+        }),
+        createEvidence({
+          sourceType: 'review',
+          title: 'Positive reviews on independent platforms',
+          snippet: 'Customers mention trusted service and positive reviews.',
+          sentiment: 'positive',
+          weight: 5,
+        }),
+        createEvidence({
+          sourceType: 'technical',
+          title: 'No URLhaus malware listing found',
+          sentiment: 'neutral',
+          weight: 1,
+        }),
+        createEvidence({
+          sourceType: 'technical',
+          title: 'No PhishTank phishing record found',
+          sentiment: 'neutral',
+          weight: 1,
+        }),
+      ],
+      [
+        {
+          key: 'domain_age',
+          sentiment: 'negative',
+          severity: 'medium',
+          confidence: 72,
+          reason: 'Domain age signal is not ideal but not a high-risk finding.',
+        },
+      ],
+    )
+
+    expect(result.score).toBeGreaterThanOrEqual(64)
+    expect(result.score).toBeLessThan(78)
+    expect(result.confidence).toBeGreaterThanOrEqual(70)
+    expect(result.recommendation).toBe('likely-safe')
+  })
+
+  it('applies evidence weights within the same factor severity', () => {
+    const lowWeightPositive = scoreEvidence([], [
+      {
+        key: 'domain_age',
+        sentiment: 'positive',
+        severity: 'medium',
+        confidence: 70,
+        weight: 1,
+        reason: 'Established domain.',
+      },
+    ])
+    const highWeightPositive = scoreEvidence([], [
+      {
+        key: 'domain_age',
+        sentiment: 'positive',
+        severity: 'medium',
+        confidence: 70,
+        weight: 10,
+        reason: 'Established domain.',
+      },
+    ])
+    const lowWeightNegative = scoreEvidence([], [
+      {
+        key: 'policy_completeness',
+        sentiment: 'negative',
+        severity: 'medium',
+        confidence: 70,
+        weight: 1,
+        reason: 'Limited policy language.',
+      },
+    ])
+    const highWeightNegative = scoreEvidence([], [
+      {
+        key: 'policy_completeness',
+        sentiment: 'negative',
+        severity: 'medium',
+        confidence: 70,
+        weight: 10,
+        reason: 'Limited policy language.',
+      },
+    ])
+
+    expect(highWeightPositive.score).toBeGreaterThan(lowWeightPositive.score)
+    expect(highWeightNegative.score).toBeLessThan(lowWeightNegative.score)
+  })
+
   it('does not return likely-safe for HTTPS and reachability alone', () => {
     const result = scoreEvidence(basicStoreSignals)
 
@@ -217,6 +316,51 @@ describe('scoreEvidence', () => {
 
     expect(withMissingProviders.score).toBe(complete.score)
     expect(withMissingProviders.confidence).toBeLessThan(complete.confidence)
+  })
+
+  it('does not return likely-safe when evidence lacks source diversity', () => {
+    const result = scoreEvidence([
+      createEvidence({
+        sourceType: 'store-site',
+        url: 'https://store.example',
+        title: 'HTTPS is enabled',
+        sentiment: 'positive',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        url: 'https://store.example',
+        title: 'Store homepage is reachable',
+        snippet: 'The homepage responded with HTTP 200.',
+        sentiment: 'positive',
+        weight: 2,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        url: 'https://store.example',
+        title: 'Visible contact or business details',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        url: 'https://store.example',
+        title: 'Customer policy coverage found',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        url: 'https://store.example',
+        title: 'Positive reviews on independent platforms',
+        snippet: 'Customers mention trusted service and positive reviews.',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+    ])
+
+    expect(result.score).toBeGreaterThanOrEqual(60)
+    expect(result.recommendation).toBe('unknown')
   })
 
   it('returns caution for mixed positive and negative reputation evidence', () => {
@@ -402,6 +546,148 @@ describe('scoreEvidence', () => {
 
     expect(result.score).toBeGreaterThanOrEqual(55)
     expect(result.recommendation).toBe('caution')
+  })
+
+  it('keeps service-complaint repetition from escalating excessively', () => {
+    const resultFewComplaints = scoreEvidence([
+      ...basicStoreSignals,
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Visible contact or business details',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Customer policy coverage found',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Poor customer service complaints',
+        snippet: 'Users describe frustrating support experiences.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+    ])
+    const resultManyComplaints = scoreEvidence([
+      ...basicStoreSignals,
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Visible contact or business details',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Customer policy coverage found',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Poor customer service complaints',
+        snippet: 'Users describe frustrating support experiences.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Slow support follow-up',
+        snippet: 'Users mention very slow support.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Dissatisfied with support tone',
+        snippet: 'Users mention poor support tone.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'More support complaints',
+        snippet: 'Additional customer service complaints.',
+        sentiment: 'negative',
+        weight: 4,
+      }),
+    ])
+
+    expect(resultManyComplaints.score).toBeLessThan(resultFewComplaints.score)
+    expect(resultFewComplaints.score - resultManyComplaints.score).toBeLessThanOrEqual(12)
+  })
+
+  it('matches baseline calibration scenarios', () => {
+    const scenarios = [
+      {
+        name: 'healthy_store',
+        result: scoreEvidence([
+          ...basicStoreSignals,
+          createEvidence({
+            sourceType: 'store-site',
+            title: 'Visible contact or business details',
+            sentiment: 'positive',
+            weight: 5,
+          }),
+          createEvidence({
+            sourceType: 'store-site',
+            title: 'Customer policy coverage found',
+            sentiment: 'positive',
+            weight: 5,
+          }),
+          createEvidence({
+            sourceType: 'rdap',
+            title: 'Domain older than three years',
+            sentiment: 'positive',
+            weight: 7,
+          }),
+          createEvidence({
+            sourceType: 'review',
+            title: 'Positive reviews on independent platforms',
+            snippet: 'Customers mention trusted service and positive reviews.',
+            sentiment: 'positive',
+            weight: 5,
+          }),
+        ]),
+        expected: 'likely-safe' as const,
+      },
+      {
+        name: 'new_risky_store',
+        result: scoreEvidence([
+          ...basicStoreSignals,
+          createEvidence({
+            sourceType: 'store-site',
+            title: 'Limited contact details on store pages',
+            sentiment: 'negative',
+            weight: 6,
+          }),
+          createEvidence({
+            sourceType: 'store-site',
+            title: 'Shopping signals without clear policies',
+            sentiment: 'negative',
+            weight: 7,
+          }),
+          createEvidence({
+            sourceType: 'rdap',
+            title: 'Domain registered less than 90 days ago',
+            sentiment: 'negative',
+            weight: 6,
+          }),
+        ]),
+        expected: 'avoid' as const,
+      },
+      {
+        name: 'incomplete_signals',
+        result: scoreEvidence(basicStoreSignals),
+        expected: 'unknown' as const,
+      },
+    ]
+
+    for (const scenario of scenarios) {
+      expect(scenario.result.recommendation, scenario.name).toBe(scenario.expected)
+    }
   })
 
   it('does not return avoid when homepage and RDAP checks are blocked but reviews are service complaints', () => {
