@@ -353,7 +353,11 @@ function evidenceToFactors(item: Evidence): RiskFactor[] {
     factors.push(createThreatFactor(item, text))
   }
 
-  if (item.sourceType === 'rdap' || /domain .*registered|domain older|registration/i.test(text)) {
+  if (
+    item.sourceType === 'rdap' ||
+    item.sourceType === 'whois' ||
+    /domain .*registered|domain older|registration/i.test(text)
+  ) {
     factors.push(createDomainFactor(item, text))
   }
 

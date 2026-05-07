@@ -116,28 +116,47 @@ describe('RDAP evidence collection', () => {
     const fetchMock = vi.fn(() =>
       Promise.resolve(
         jsonResponse({
-          events: [
-            {
-              eventAction: 'registration',
-              eventDate: '2000-01-01T00:00:00Z',
-            },
-          ],
+          registered: true,
+          created: '2000-01-01T00:00:00Z',
         }),
       ),
     )
     vi.stubGlobal('fetch', fetchMock)
 
-    const evidence = await collectRdapEvidence('www.zara.com')
+    const evidence = await collectRdapEvidence('www.zara.com', {
+      WHOISJSON_API_TOKEN: 'test-token',
+    })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://rdap.org/domain/zara.com',
-      expect.any(Object),
+      'https://whoisjson.com/api/v1/whois?domain=zara.com',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'TOKEN=test-token',
+        }),
+      }),
     )
     expect(evidence[0]).toEqual(
       expect.objectContaining({
         title: 'Domain older than three years',
         sentiment: 'positive',
-        url: 'https://rdap.org/domain/zara.com',
+        sourceType: 'whois',
+        url: 'https://whoisjson.com/api/v1/whois?domain=zara.com',
+      }),
+    )
+  })
+
+  it('returns neutral evidence when the WhoisJSON token is missing', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectRdapEvidence('example.com')
+
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(evidence[0]).toEqual(
+      expect.objectContaining({
+        title: 'Domain registration lookup was skipped',
+        sentiment: 'neutral',
+        sourceType: 'whois',
       }),
     )
   })

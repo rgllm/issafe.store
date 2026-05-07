@@ -70,6 +70,7 @@ bun run build
 ```bash
 bunx wrangler secret put GOOGLE_WEB_RISK_API_KEY
 bunx wrangler secret put TAVILY_API_KEY
+bunx wrangler secret put WHOISJSON_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
 ```
 
@@ -78,6 +79,7 @@ Behavior notes:
 - If `TURNSTILE_SECRET_KEY` is missing, backend verification is skipped.
 - If `TAVILY_API_KEY` is missing, external web reputation signals are reduced.
 - If `GOOGLE_WEB_RISK_API_KEY` is missing, Google Web Risk threat-list checks are skipped.
+- If `WHOISJSON_API_TOKEN` is missing, domain registration age checks are skipped.
 
 ### Cloudflare bindings used
 
@@ -190,6 +192,7 @@ bunx wrangler d1 migrations apply issafe-store
 ```bash
 bunx wrangler secret put GOOGLE_WEB_RISK_API_KEY
 bunx wrangler secret put TAVILY_API_KEY
+bunx wrangler secret put WHOISJSON_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
 ```
 

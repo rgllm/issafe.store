@@ -8,6 +8,7 @@ type ResearchEnv = {
   CACHE_TTL_SECONDS?: string
   GOOGLE_WEB_RISK_API_KEY?: string
   TAVILY_API_KEY?: string
+  WHOISJSON_API_TOKEN?: string
 }
 
 type TavilyQuery = {
@@ -155,7 +156,7 @@ export async function runStoreResearch(
   const siteEvidence = await collectSiteEvidence(request.normalizedUrl)
   reportProgress?.('researching', 'Checking domain registration data.')
 
-  const rdapEvidence = await collectRdapEvidence(request.hostname)
+  const rdapEvidence = await collectRdapEvidence(request.hostname, env)
   reportProgress?.('researching', 'Checking public threat-list signals.')
 
   const threatEvidence = await collectThreatListEvidence(request, env)
@@ -363,21 +364,43 @@ export async function collectSiteEvidence(normalizedUrl: string): Promise<Eviden
   ]
 }
 
-export async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
+export async function collectRdapEvidence(
+  hostname: string,
+  env: Pick<ResearchEnv, 'WHOISJSON_API_TOKEN'> = {},
+): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
-  const lookupDomain = getRdapLookupDomain(hostname)
-  const lookupUrl = `https://rdap.org/domain/${lookupDomain}`
+  const lookupDomain = getWhoisLookupDomain(hostname)
+  const lookupUrl = `https://whoisjson.com/api/v1/whois?domain=${encodeURIComponent(lookupDomain)}`
+
+  if (!env.WHOISJSON_API_TOKEN) {
+    return [
+      {
+        sourceType: 'whois',
+        title: 'Domain registration lookup was skipped',
+        url: 'https://whoisjson.com/api/v1/whois',
+        snippet: 'Set WHOISJSON_API_TOKEN to include WhoisJSON domain registration checks.',
+        sentiment: 'neutral',
+        weight: 1,
+        observedAt,
+      },
+    ]
+  }
 
   try {
-    const response = await fetchWithTimeout(lookupUrl, 4500)
+    const response = await fetchWithTimeout(lookupUrl, 4500, {
+      headers: {
+        accept: 'application/json',
+        authorization: `TOKEN=${env.WHOISJSON_API_TOKEN}`,
+      },
+    })
 
     if (!response.ok) {
       return [
         {
-          sourceType: 'rdap',
+          sourceType: 'whois',
           title: 'Domain registration lookup was inconclusive',
           url: lookupUrl,
-          snippet: `RDAP returned HTTP ${response.status}.`,
+          snippet: `WhoisJSON returned HTTP ${response.status}.`,
           sentiment: 'neutral',
           weight: 2,
           observedAt,
@@ -386,23 +409,41 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
     }
 
     const data = (await response.json()) as {
-      events?: Array<{ eventAction?: string; eventDate?: string }>
+      registered?: boolean
+      created?: string
+      age?: {
+        days?: number
+      }
     }
-    const registration = data.events?.find((event) =>
-      /registration|registered/i.test(event.eventAction ?? ''),
-    )
-    const registeredAt = registration?.eventDate
-    const domainAgeDays = registeredAt
-      ? Math.floor((Date.now() - new Date(registeredAt).getTime()) / 86_400_000)
-      : null
+
+    if (data.registered === false) {
+      return [
+        {
+          sourceType: 'whois',
+          title: 'Domain does not appear to be registered',
+          url: lookupUrl,
+          snippet: 'WhoisJSON reports this domain is not currently registered.',
+          sentiment: 'negative',
+          weight: 8,
+          observedAt,
+        },
+      ]
+    }
+
+    const registeredAt = data.created
+    const domainAgeDays = Number.isFinite(data.age?.days)
+      ? data.age?.days ?? null
+      : registeredAt
+        ? Math.floor((Date.now() - new Date(registeredAt).getTime()) / 86_400_000)
+        : null
 
     if (domainAgeDays === null) {
       return [
         {
-          sourceType: 'rdap',
-          title: 'RDAP record found without registration age',
+          sourceType: 'whois',
+          title: 'WHOIS record found without registration age',
           url: lookupUrl,
-          snippet: 'RDAP returned a public domain record, but no registration date was available.',
+          snippet: 'WhoisJSON returned a public domain record, but no registration date was available.',
           sentiment: 'neutral',
           weight: 2,
           observedAt,
@@ -413,10 +454,10 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
     if (domainAgeDays < 30) {
       return [
         {
-          sourceType: 'rdap',
+          sourceType: 'whois',
           title: 'Domain registered less than 30 days ago',
           url: lookupUrl,
-          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
+          snippet: `WhoisJSON indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 8,
           observedAt,
@@ -427,10 +468,10 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
     if (domainAgeDays < 90) {
       return [
         {
-          sourceType: 'rdap',
+          sourceType: 'whois',
           title: 'Domain registered less than 90 days ago',
           url: lookupUrl,
-          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
+          snippet: `WhoisJSON indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 6,
           observedAt,
@@ -441,10 +482,10 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
     if (domainAgeDays < 365) {
       return [
         {
-          sourceType: 'rdap',
+          sourceType: 'whois',
           title: 'Domain registered less than one year ago',
           url: lookupUrl,
-          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
+          snippet: `WhoisJSON indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 3,
           observedAt,
@@ -455,10 +496,12 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
     if (domainAgeDays > 1095) {
       return [
         {
-          sourceType: 'rdap',
+          sourceType: 'whois',
           title: 'Domain older than three years',
           url: lookupUrl,
-          snippet: `RDAP registration date: ${registeredAt}.`,
+          snippet: registeredAt
+            ? `WhoisJSON registration date: ${registeredAt}.`
+            : `WhoisJSON reports this domain is about ${domainAgeDays} days old.`,
           sentiment: 'positive',
           weight: 7,
           observedAt,
@@ -468,10 +511,12 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
 
     return [
       {
-        sourceType: 'rdap',
+        sourceType: 'whois',
         title: 'Domain older than one year',
         url: lookupUrl,
-        snippet: `RDAP registration date: ${registeredAt}.`,
+        snippet: registeredAt
+          ? `WhoisJSON registration date: ${registeredAt}.`
+          : `WhoisJSON reports this domain is about ${domainAgeDays} days old.`,
         sentiment: 'positive',
         weight: 4,
         observedAt,
@@ -480,10 +525,10 @@ export async function collectRdapEvidence(hostname: string): Promise<Evidence[]>
   } catch {
     return [
       {
-        sourceType: 'rdap',
+        sourceType: 'whois',
         title: 'Domain registration lookup failed',
         url: lookupUrl,
-        snippet: 'The RDAP lookup did not complete before the timeout.',
+        snippet: 'The WhoisJSON lookup did not complete before the timeout.',
         sentiment: 'neutral',
         weight: 1,
         observedAt,
@@ -496,7 +541,7 @@ function isAutomatedAccessBlocked(status: number | undefined) {
   return status === 401 || status === 403 || status === 429
 }
 
-function getRdapLookupDomain(hostname: string) {
+function getWhoisLookupDomain(hostname: string) {
   return hostname.startsWith('www.') ? hostname.slice(4) : hostname
 }
 

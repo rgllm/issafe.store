@@ -1,7 +1,7 @@
 export type Recommendation = 'likely-safe' | 'caution' | 'avoid' | 'unknown'
 
 export type Evidence = {
-  sourceType: 'store-site' | 'search-result' | 'review' | 'rdap' | 'technical'
+  sourceType: 'store-site' | 'search-result' | 'review' | 'rdap' | 'whois' | 'technical'
   title: string
   url?: string
   snippet: string
