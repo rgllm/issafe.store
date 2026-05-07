@@ -128,10 +128,10 @@ describe('RDAP evidence collection', () => {
     })
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://whoisjson.com/api/v1/whois?domain=zara.com',
+      'https://whoisjson.com/api/v1/whois/?domain=zara.com',
       expect.objectContaining({
         headers: expect.objectContaining({
-          authorization: 'TOKEN=test-token',
+          Authorization: 'TOKEN=test-token',
         }),
       }),
     )
@@ -140,7 +140,32 @@ describe('RDAP evidence collection', () => {
         title: 'Domain older than three years',
         sentiment: 'positive',
         sourceType: 'whois',
-        url: 'https://whoisjson.com/api/v1/whois?domain=zara.com',
+        url: 'https://whoisjson.com/api/v1/whois/?domain=zara.com',
+      }),
+    )
+  })
+
+  it('accepts a copied TOKEN-prefixed WhoisJSON secret value', async () => {
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        jsonResponse({
+          registered: true,
+          age: { days: 1200 },
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await collectRdapEvidence('example.com', {
+      WHOISJSON_API_TOKEN: 'TOKEN=test-token',
+    })
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://whoisjson.com/api/v1/whois/?domain=example.com',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'TOKEN=test-token',
+        }),
       }),
     )
   })

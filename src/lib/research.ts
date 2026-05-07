@@ -369,10 +369,11 @@ export async function collectRdapEvidence(
   env: Pick<ResearchEnv, 'WHOISJSON_API_TOKEN'> = {},
 ): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
+  const apiToken = normalizeWhoisJsonApiToken(env.WHOISJSON_API_TOKEN)
   const lookupDomain = getWhoisLookupDomain(hostname)
-  const lookupUrl = `https://whoisjson.com/api/v1/whois?domain=${encodeURIComponent(lookupDomain)}`
+  const lookupUrl = `https://whoisjson.com/api/v1/whois/?domain=${encodeURIComponent(lookupDomain)}`
 
-  if (!env.WHOISJSON_API_TOKEN) {
+  if (!apiToken) {
     return [
       {
         sourceType: 'whois',
@@ -389,8 +390,8 @@ export async function collectRdapEvidence(
   try {
     const response = await fetchWithTimeout(lookupUrl, 4500, {
       headers: {
-        accept: 'application/json',
-        authorization: `TOKEN=${env.WHOISJSON_API_TOKEN}`,
+        Accept: 'application/json',
+        Authorization: `TOKEN=${apiToken}`,
       },
     })
 
@@ -543,6 +544,10 @@ function isAutomatedAccessBlocked(status: number | undefined) {
 
 function getWhoisLookupDomain(hostname: string) {
   return hostname.startsWith('www.') ? hostname.slice(4) : hostname
+}
+
+function normalizeWhoisJsonApiToken(token: string | undefined) {
+  return token?.trim().replace(/^token=/i, '').trim()
 }
 
 export async function collectThreatListEvidence(
