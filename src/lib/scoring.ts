@@ -50,19 +50,11 @@ type RecommendationContext = {
 
 const DEFAULT_FACTOR_WEIGHT = 5
 export const RECOMMENDATION_POLICY = {
-  minimumConfidenceForDecision: 42,
-  minimumCategoryCount: 4,
-  minimumCategoryCountWithReputation: 3,
-  minimumSourceDiversity: 2,
-  avoidScoreThreshold: 40,
-  avoidScoreThresholdWithHighNegative: 50,
-  likelySafeScoreThreshold: 60,
+  avoidScoreThreshold: 50,
+  likelySafeScoreThreshold: 50,
   likelySafeConfidenceThreshold: 65,
-  likelySafeCategoryCount: 3,
-  likelySafeSourceDiversity: 3,
-  borderlineBandMin: 58,
-  borderlineBandMax: 64,
-  borderlineConfidenceFloor: 62,
+  safeScoreThreshold: 50,
+  safeConfidenceThreshold: 90,
 } as const
 
 const IMPACT_WEIGHTS: Record<
@@ -222,54 +214,25 @@ export function getRecommendation(
     return 'avoid'
   }
 
-  if (
-    confidence < RECOMMENDATION_POLICY.minimumConfidenceForDecision ||
-    context.sourceDiversity < RECOMMENDATION_POLICY.minimumSourceDiversity ||
-    (context.categoryCount < RECOMMENDATION_POLICY.minimumCategoryCount &&
-      !(
-        context.categoryCount >= RECOMMENDATION_POLICY.minimumCategoryCountWithReputation &&
-        context.hasIndependentReputation
-      ))
-  ) {
-    return 'unknown'
-  }
-
-  if (
-    score < RECOMMENDATION_POLICY.avoidScoreThreshold &&
-    (context.highNonReputationNegativeCount > 0 || context.highReputationNegativeCount >= 2)
-  ) {
+  if (score < RECOMMENDATION_POLICY.avoidScoreThreshold) {
     return 'avoid'
   }
 
   if (
-    score < RECOMMENDATION_POLICY.avoidScoreThresholdWithHighNegative &&
-    context.highNonReputationNegativeCount > 0
+    score >= RECOMMENDATION_POLICY.safeScoreThreshold &&
+    confidence >= RECOMMENDATION_POLICY.safeConfidenceThreshold
   ) {
-    return 'avoid'
-  }
-
-  if (
-    score >= RECOMMENDATION_POLICY.borderlineBandMin &&
-    score <= RECOMMENDATION_POLICY.borderlineBandMax &&
-    (!context.hasIndependentReputation ||
-      confidence < RECOMMENDATION_POLICY.borderlineConfidenceFloor)
-  ) {
-    return 'caution'
+    return 'safe'
   }
 
   if (
     score >= RECOMMENDATION_POLICY.likelySafeScoreThreshold &&
-    confidence >= RECOMMENDATION_POLICY.likelySafeConfidenceThreshold &&
-    context.categoryCount >= RECOMMENDATION_POLICY.likelySafeCategoryCount &&
-    context.sourceDiversity >= RECOMMENDATION_POLICY.likelySafeSourceDiversity &&
-    context.highNegativeCount === 0 &&
-    context.strongNegativeReputationCount === 0 &&
-    context.hasIndependentReputation
+    confidence >= RECOMMENDATION_POLICY.likelySafeConfidenceThreshold
   ) {
     return 'likely-safe'
   }
 
-  return 'caution'
+  return 'unknown'
 }
 
 export function buildRiskFactors(

@@ -41,6 +41,8 @@
   --risk-bg: oklch(0.97 0.03 55);
   --risk-line: oklch(0.88 0.09 62);
   --signal-safe: var(--safe);
+  --signal-likely-safe: oklch(0.64 0.16 151);
+  --signal-avoid: oklch(0.78 0.17 85);
   --signal-caution: oklch(0.54 0.14 72);
   --signal-risk: var(--danger);
   --signal-unknown: var(--muted-foreground);
@@ -73,6 +75,8 @@
   --line-strong: oklch(0.34 0.024 245);
   --risk-bg: oklch(0.19 0.035 35);
   --risk-line: oklch(0.36 0.08 35);
+  --signal-likely-safe: oklch(0.73 0.15 151);
+  --signal-avoid: oklch(0.84 0.16 85);
   --signal-caution: var(--warning);
 }
 
@@ -103,6 +107,8 @@
     --line-strong: oklch(0.34 0.024 245);
     --risk-bg: oklch(0.19 0.035 35);
     --risk-line: oklch(0.36 0.08 35);
+    --signal-likely-safe: oklch(0.73 0.15 151);
+    --signal-avoid: oklch(0.84 0.16 85);
     --signal-caution: var(--warning);
   }
 }

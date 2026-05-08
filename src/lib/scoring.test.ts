@@ -46,7 +46,7 @@ describe('dedupeEvidence', () => {
 })
 
 describe('scoreEvidence', () => {
-  it('returns likely-safe for established stores with policies, contact, and reputation', () => {
+  it('returns safe for established stores with policies, contact, and reputation', () => {
     const result = scoreEvidence([
       ...basicStoreSignals,
       createEvidence({
@@ -84,10 +84,10 @@ describe('scoreEvidence', () => {
 
     expect(result.score).toBeGreaterThanOrEqual(78)
     expect(result.confidence).toBeGreaterThanOrEqual(68)
-    expect(result.recommendation).toBe('likely-safe')
+    expect(result.recommendation).toBe('safe')
   })
 
-  it('returns likely-safe for high-confidence stores above the relaxed threshold', () => {
+  it('returns safe for high-confidence stores above the threshold', () => {
     const result = scoreEvidence(
       [
         ...basicStoreSignals,
@@ -137,7 +137,7 @@ describe('scoreEvidence', () => {
     expect(result.score).toBeGreaterThanOrEqual(64)
     expect(result.score).toBeLessThan(78)
     expect(result.confidence).toBeGreaterThanOrEqual(70)
-    expect(result.recommendation).toBe('likely-safe')
+    expect(result.recommendation).toBe('safe')
   })
 
   it('applies evidence weights within the same factor severity', () => {
@@ -318,7 +318,7 @@ describe('scoreEvidence', () => {
     expect(withMissingProviders.confidence).toBeLessThan(complete.confidence)
   })
 
-  it('does not return likely-safe when evidence lacks source diversity', () => {
+  it('returns likely-safe when score and confidence meet threshold', () => {
     const result = scoreEvidence([
       createEvidence({
         sourceType: 'store-site',
@@ -360,10 +360,10 @@ describe('scoreEvidence', () => {
     ])
 
     expect(result.score).toBeGreaterThanOrEqual(60)
-    expect(result.recommendation).toBe('unknown')
+    expect(result.recommendation).toBe('likely-safe')
   })
 
-  it('returns caution for mixed positive and negative reputation evidence', () => {
+  it('returns safe for mixed positive and negative reputation evidence with high confidence', () => {
     const result = scoreEvidence([
       ...basicStoreSignals,
       createEvidence({
@@ -408,10 +408,10 @@ describe('scoreEvidence', () => {
 
     expect(result.score).toBeGreaterThanOrEqual(55)
     expect(result.score).toBeLessThan(78)
-    expect(result.recommendation).toBe('caution')
+    expect(result.recommendation).toBe('safe')
   })
 
-  it('does not force avoid for established stores with mixed reputation snippets', () => {
+  it('does not force avoid for established stores with mixed reputation snippets and high confidence', () => {
     const result = scoreEvidence([
       ...basicStoreSignals,
       createEvidence({
@@ -463,10 +463,10 @@ describe('scoreEvidence', () => {
 
     expect(result.score).toBeGreaterThanOrEqual(55)
     expect(result.score).toBeLessThan(78)
-    expect(result.recommendation).toBe('caution')
+    expect(result.recommendation).toBe('safe')
   })
 
-  it('returns caution for established brands with service-review noise and unavailable providers', () => {
+  it('returns unknown for established brands with service-review noise and unavailable providers', () => {
     const result = scoreEvidence([
       createEvidence({
         sourceType: 'technical',
@@ -545,7 +545,7 @@ describe('scoreEvidence', () => {
     ])
 
     expect(result.score).toBeGreaterThanOrEqual(55)
-    expect(result.recommendation).toBe('caution')
+    expect(result.recommendation).toBe('unknown')
   })
 
   it('keeps service-complaint repetition from escalating excessively', () => {
@@ -651,7 +651,7 @@ describe('scoreEvidence', () => {
             weight: 5,
           }),
         ]),
-        expected: 'likely-safe' as const,
+        expected: 'safe' as const,
       },
       {
         name: 'new_risky_store',
@@ -690,7 +690,7 @@ describe('scoreEvidence', () => {
     }
   })
 
-  it('does not return avoid when homepage and RDAP checks are blocked but reviews are service complaints', () => {
+  it('returns unknown when homepage and RDAP checks are blocked but reviews are service complaints', () => {
     const result = scoreEvidence([
       createEvidence({
         sourceType: 'technical',
@@ -761,6 +761,6 @@ describe('scoreEvidence', () => {
     ])
 
     expect(result.score).toBeGreaterThanOrEqual(40)
-    expect(result.recommendation).toBe('caution')
+    expect(result.recommendation).toBe('unknown')
   })
 })

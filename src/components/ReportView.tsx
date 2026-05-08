@@ -218,18 +218,22 @@ function getVerdict(report: StoreSafetyReport): {
   }
 
   if (report.recommendation === 'likely-safe') {
-    return createTone('Likely safe', 'var(--signal-safe)', ShieldCheck)
+    return createTone('Likely safe', 'var(--signal-likely-safe)', ShieldCheck)
+  }
+
+  if (report.recommendation === 'safe') {
+    return createTone('Safe', 'var(--signal-safe)', ShieldCheck)
   }
 
   if (report.recommendation === 'avoid') {
-    return createTone('Avoid', 'var(--signal-risk)', ShieldAlert)
+    return createTone('Avoid', 'var(--signal-avoid)', ShieldAlert)
   }
 
   if (report.recommendation === 'unknown') {
     return createTone('Unknown', 'var(--signal-unknown)', AlertTriangle)
   }
 
-  return createTone('Use caution', 'var(--signal-caution)', AlertTriangle)
+  return createTone('Unknown', 'var(--signal-unknown)', AlertTriangle)
 }
 
 function createTone(label: string, color: string, Icon: LucideIcon) {
