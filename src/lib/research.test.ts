@@ -206,11 +206,20 @@ describe('threat provider mapping', () => {
       }),
     )
 
-    const evidence = await collectUrlhausEvidence('https://example.com/', 'example.com')
+    const evidence = await collectUrlhausEvidence('https://example.com/', 'example.com', {
+      URLHAUS_AUTH_KEY: 'test-key',
+    })
 
     expect(evidence[0]?.title).toBe('URLhaus malware listing found')
     expect(evidence[0]?.sentiment).toBe('negative')
     expect(evidence[0]?.weight).toBe(10)
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'Auth-Key': 'test-key',
+        }),
+      }),
+    )
   })
 
   it('maps URLhaus no-match responses to neutral evidence', async () => {
@@ -219,10 +228,22 @@ describe('threat provider mapping', () => {
       vi.fn(() => Promise.resolve(jsonResponse({ query_status: 'no_results' }))),
     )
 
-    const evidence = await collectUrlhausEvidence('https://example.com/', 'example.com')
+    const evidence = await collectUrlhausEvidence('https://example.com/', 'example.com', {
+      URLHAUS_AUTH_KEY: 'test-key',
+    })
 
     expect(evidence[0]?.title).toBe('No URLhaus malware listing found')
     expect(evidence[0]?.sentiment).toBe('neutral')
+  })
+
+  it('skips URLhaus when the auth key is missing', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectUrlhausEvidence('https://example.com/', 'example.com')
+
+    expect(evidence[0]?.title).toBe('URLhaus malware check is not configured')
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('maps verified PhishTank matches to negative evidence', async () => {
@@ -242,10 +263,20 @@ describe('threat provider mapping', () => {
       ),
     )
 
-    const evidence = await collectPhishTankEvidence('https://example.com/')
+    const evidence = await collectPhishTankEvidence('https://example.com/', {
+      PHISHTANK_APP_KEY: 'test-key',
+    })
 
     expect(evidence[0]?.title).toBe('PhishTank verified phishing match found')
     expect(evidence[0]?.sentiment).toBe('negative')
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          'user-agent': 'phishtank/issafe-store',
+        }),
+      }),
+    )
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)).toContain('app_key=test-key')
   })
 
   it('maps clean PhishTank responses to neutral evidence', async () => {
@@ -258,6 +289,28 @@ describe('threat provider mapping', () => {
               in_database: false,
               valid: false,
               verified: false,
+            },
+          }),
+        ),
+      ),
+    )
+
+    const evidence = await collectPhishTankEvidence('https://example.com/')
+
+    expect(evidence[0]?.title).toBe('No PhishTank phishing record found')
+    expect(evidence[0]?.sentiment).toBe('neutral')
+  })
+
+  it('maps inactive PhishTank records to neutral evidence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            results: {
+              in_database: true,
+              valid: 'n',
+              verified: 'n',
             },
           }),
         ),

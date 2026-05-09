@@ -40,7 +40,7 @@ export function ReportView({
           to="/"
           className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm font-medium text-[var(--sea-ink-soft)] no-underline hover:text-[var(--sea-ink)]"
         >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          <ArrowLeft className="size-4" aria-hidden="true" />
           Check another store
         </Link>
         <span className="text-xs font-medium text-[var(--sea-ink-soft)]">
@@ -67,7 +67,7 @@ export function ReportView({
                 borderColor: verdict.border,
               }}
             >
-              <verdict.Icon className="h-4 w-4" aria-hidden="true" />
+              <verdict.Icon className="size-4" aria-hidden="true" />
               {verdict.label}
             </span>
           </div>
@@ -95,7 +95,7 @@ export function ReportView({
 
             {isWorking ? (
               <div className="mt-5 flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm font-medium text-[var(--sea-ink)]">
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                 Collecting fresh evidence...
               </div>
             ) : null}
@@ -115,7 +115,7 @@ export function ReportView({
               ].map((item) => (
                 <li key={item} className="flex gap-2">
                   <CheckCircle2
-                    className="mt-1 h-4 w-4 flex-none text-[var(--signal-safe)]"
+                    className="mt-1 size-4 flex-none text-[var(--signal-safe)]"
                     aria-hidden="true"
                   />
                   <span>{item}</span>
@@ -195,7 +195,7 @@ function EvidenceRow({ evidence }: { evidence: Evidence }) {
           className="mt-3 inline-flex items-center gap-1 text-sm font-medium no-underline"
         >
           Source
-          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+          <ExternalLink className="size-3.5" aria-hidden="true" />
         </a>
       ) : null}
     </article>

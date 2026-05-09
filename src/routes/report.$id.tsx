@@ -81,7 +81,7 @@ function ReportPage() {
         <section className="island-shell rounded-lg p-5">
           <div className="flex items-start gap-3">
             <AlertTriangle
-              className="mt-0.5 h-5 w-5 flex-none text-[var(--signal-risk)]"
+              className="mt-0.5 size-5 flex-none text-[var(--signal-risk)]"
               aria-hidden="true"
             />
             <div>
@@ -102,7 +102,7 @@ function ReportPage() {
     return (
       <main className="page-wrap flex min-h-[calc(100vh-12rem)] items-center justify-center px-4 py-14">
         <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--sea-ink-soft)]">
-          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           Loading your report...
         </div>
       </main>

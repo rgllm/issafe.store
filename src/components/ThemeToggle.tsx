@@ -75,9 +75,9 @@ export default function ThemeToggle() {
       onClick={toggleMode}
       aria-label={label}
       title={label}
-      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--chip-line)] bg-[var(--chip-bg)] text-[var(--sea-ink)] transition hover:bg-[var(--link-bg-hover)]"
+      className="inline-flex size-9 items-center justify-center rounded-lg border border-[var(--chip-line)] bg-[var(--chip-bg)] text-[var(--sea-ink)] transition hover:bg-[var(--link-bg-hover)]"
     >
-      <Icon className="h-4 w-4" aria-hidden="true" />
+      <Icon className="size-4" aria-hidden="true" />
     </button>
   )
 }

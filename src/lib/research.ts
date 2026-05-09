@@ -7,7 +7,9 @@ type ResearchEnv = {
   AI_MODEL?: string
   CACHE_TTL_SECONDS?: string
   GOOGLE_WEB_RISK_API_KEY?: string
+  PHISHTANK_APP_KEY?: string
   TAVILY_API_KEY?: string
+  URLHAUS_AUTH_KEY?: string
   WHOISJSON_API_TOKEN?: string
 }
 
@@ -50,8 +52,8 @@ type UrlhausResponse = {
 type PhishTankResponse = {
   results?: {
     in_database?: boolean
-    valid?: boolean
-    verified?: boolean
+    valid?: boolean | string
+    verified?: boolean | string
     phish_id?: string | number
   }
 }
@@ -140,6 +142,8 @@ const WEB_RISK_THREAT_TYPES = [
   'UNWANTED_SOFTWARE',
   'SOCIAL_ENGINEERING_EXTENDED_COVERAGE',
 ]
+
+const PHISHTANK_USER_AGENT = 'phishtank/issafe-store'
 
 export const DEFAULT_CACHE_TTL_SECONDS = 604_800
 
@@ -554,11 +558,14 @@ function normalizeWhoisJsonApiToken(token: string | undefined) {
 
 export async function collectThreatListEvidence(
   request: StoreSafetyRequest,
-  env: Pick<ResearchEnv, 'GOOGLE_WEB_RISK_API_KEY'>,
+  env: Pick<
+    ResearchEnv,
+    'GOOGLE_WEB_RISK_API_KEY' | 'PHISHTANK_APP_KEY' | 'URLHAUS_AUTH_KEY'
+  >,
 ): Promise<Evidence[]> {
   const results = await Promise.allSettled([
-    collectUrlhausEvidence(request.normalizedUrl, request.hostname),
-    collectPhishTankEvidence(request.normalizedUrl),
+    collectUrlhausEvidence(request.normalizedUrl, request.hostname, env),
+    collectPhishTankEvidence(request.normalizedUrl, env),
     collectWebRiskEvidence(request.normalizedUrl, env),
   ])
 
@@ -568,13 +575,28 @@ export async function collectThreatListEvidence(
 export async function collectUrlhausEvidence(
   normalizedUrl: string,
   hostname: string,
+  env: Pick<ResearchEnv, 'URLHAUS_AUTH_KEY'> = {},
 ): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
+  const authKey = env.URLHAUS_AUTH_KEY?.trim()
+
+  if (!authKey) {
+    return [
+      {
+        sourceType: 'technical',
+        title: 'URLhaus malware check is not configured',
+        snippet: 'Set URLHAUS_AUTH_KEY to include URLhaus malware URL checks.',
+        sentiment: 'neutral',
+        weight: 1,
+        observedAt,
+      },
+    ]
+  }
 
   try {
     const [urlResult, hostResult] = await Promise.allSettled([
-      queryUrlhaus('url', { url: normalizedUrl }),
-      queryUrlhaus('host', { host: hostname }),
+      queryUrlhaus('url', { url: normalizedUrl }, authKey),
+      queryUrlhaus('host', { host: hostname }, authKey),
     ])
     const matchedUrl =
       urlResult.status === 'fulfilled' && urlhausHasMatch(urlResult.value)
@@ -606,7 +628,13 @@ export async function collectUrlhausEvidence(
     }
 
     if (urlResult.status === 'rejected' && hostResult.status === 'rejected') {
-      return [providerUnavailableEvidence('URLhaus malware check unavailable', observedAt)]
+      return [
+        providerUnavailableEvidence(
+          'URLhaus malware check unavailable',
+          observedAt,
+          describeProviderError(urlResult.reason),
+        ),
+      ]
     }
 
     return [
@@ -620,36 +648,57 @@ export async function collectUrlhausEvidence(
         observedAt,
       },
     ]
-  } catch {
-    return [providerUnavailableEvidence('URLhaus malware check unavailable', observedAt)]
+  } catch (error) {
+    return [
+      providerUnavailableEvidence(
+        'URLhaus malware check unavailable',
+        observedAt,
+        describeProviderError(error),
+      ),
+    ]
   }
 }
 
-export async function collectPhishTankEvidence(normalizedUrl: string): Promise<Evidence[]> {
+export async function collectPhishTankEvidence(
+  normalizedUrl: string,
+  env: Pick<ResearchEnv, 'PHISHTANK_APP_KEY'> = {},
+): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
+  const body = new URLSearchParams({
+    url: normalizedUrl,
+    format: 'json',
+  })
+
+  if (env.PHISHTANK_APP_KEY?.trim()) {
+    body.set('app_key', env.PHISHTANK_APP_KEY.trim())
+  }
 
   try {
     const response = await fetchWithTimeout('https://checkurl.phishtank.com/checkurl/', 6500, {
       method: 'POST',
       headers: {
         'content-type': 'application/x-www-form-urlencoded',
-        'user-agent':
-          'IsSafeStoreBot/1.0 (+https://issafe.store; store safety public signal checker)',
+        'user-agent': PHISHTANK_USER_AGENT,
       },
-      body: new URLSearchParams({
-        url: normalizedUrl,
-        format: 'json',
-      }),
+      body,
     })
 
     if (!response.ok) {
-      return [providerUnavailableEvidence('PhishTank phishing check unavailable', observedAt)]
+      return [
+        providerUnavailableEvidence(
+          'PhishTank phishing check unavailable',
+          observedAt,
+          describeHttpProviderStatus('PhishTank', response.status),
+        ),
+      ]
     }
 
     const result = (await response.json()) as PhishTankResponse
     const details = result.results
+    const isValid = details?.valid !== false && details?.valid !== 'n'
+    const isVerified = details?.verified === true || details?.verified === 'y'
 
-    if (details?.in_database && details.verified && details.valid !== false) {
+    if (details?.in_database && isVerified && isValid) {
       return [
         {
           sourceType: 'technical',
@@ -663,7 +712,7 @@ export async function collectPhishTankEvidence(normalizedUrl: string): Promise<E
       ]
     }
 
-    if (details?.in_database) {
+    if (details?.in_database && isValid) {
       return [
         {
           sourceType: 'technical',
@@ -688,8 +737,14 @@ export async function collectPhishTankEvidence(normalizedUrl: string): Promise<E
         observedAt,
       },
     ]
-  } catch {
-    return [providerUnavailableEvidence('PhishTank phishing check unavailable', observedAt)]
+  } catch (error) {
+    return [
+      providerUnavailableEvidence(
+        'PhishTank phishing check unavailable',
+        observedAt,
+        describeProviderError(error),
+      ),
+    ]
   }
 }
 
@@ -728,7 +783,13 @@ export async function collectWebRiskEvidence(
     )
 
     if (!response.ok) {
-      return [providerUnavailableEvidence('Google Web Risk check unavailable', observedAt)]
+      return [
+        providerUnavailableEvidence(
+          'Google Web Risk check unavailable',
+          observedAt,
+          describeHttpProviderStatus('Google Web Risk', response.status),
+        ),
+      ]
     }
 
     const result = (await response.json()) as WebRiskResponse
@@ -759,8 +820,14 @@ export async function collectWebRiskEvidence(
         observedAt,
       },
     ]
-  } catch {
-    return [providerUnavailableEvidence('Google Web Risk check unavailable', observedAt)]
+  } catch (error) {
+    return [
+      providerUnavailableEvidence(
+        'Google Web Risk check unavailable',
+        observedAt,
+        describeProviderError(error),
+      ),
+    ]
   }
 }
 
@@ -997,10 +1064,11 @@ async function collectPolicyPages(urls: string[], observedAt: string): Promise<P
   return pages.filter((page): page is PolicyPage => Boolean(page))
 }
 
-async function queryUrlhaus(path: 'host' | 'url', body: Record<string, string>) {
+async function queryUrlhaus(path: 'host' | 'url', body: Record<string, string>, authKey: string) {
   const response = await fetchWithTimeout(`https://urlhaus-api.abuse.ch/v1/${path}/`, 6500, {
     method: 'POST',
     headers: {
+      'Auth-Key': authKey,
       'content-type': 'application/x-www-form-urlencoded',
       'user-agent':
         'IsSafeStoreBot/1.0 (+https://issafe.store; store safety public signal checker)',
@@ -1027,15 +1095,45 @@ function urlhausHasMatch(response: UrlhausResponse) {
   return Boolean(response.urls?.length)
 }
 
-function providerUnavailableEvidence(title: string, observedAt: string): Evidence {
+function providerUnavailableEvidence(title: string, observedAt: string, reason?: string): Evidence {
   return {
     sourceType: 'technical',
     title,
-    snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
+    snippet: reason
+      ? `${reason} This signal is not included in the score.`
+      : 'The provider did not return a usable result, so this signal is not included in the score.',
     sentiment: 'neutral',
     weight: 1,
     observedAt,
   }
+}
+
+function describeProviderError(error: unknown) {
+  if (error instanceof Error && error.message) {
+    return error.message
+  }
+
+  return 'The provider did not return a usable result.'
+}
+
+function describeHttpProviderStatus(provider: string, status: number) {
+  if (provider === 'Google Web Risk' && (status === 401 || status === 403)) {
+    return `${provider} returned HTTP ${status}. Confirm the API key is valid, Web Risk is enabled for the Google Cloud project, and API key restrictions allow webrisk.googleapis.com.`
+  }
+
+  if (provider === 'PhishTank' && status === 509) {
+    return `${provider} returned HTTP 509. Set PHISHTANK_APP_KEY or wait for the rate-limit window to reset.`
+  }
+
+  if (status === 401 || status === 403) {
+    return `${provider} returned HTTP ${status}. Confirm the provider credentials and key restrictions.`
+  }
+
+  if (status === 429) {
+    return `${provider} returned HTTP 429. The provider rate limit was reached.`
+  }
+
+  return `${provider} returned HTTP ${status}.`
 }
 
 async function fetchPage(url: string) {

@@ -16,7 +16,7 @@ export function BrandLogo({ size = 'sm' }: BrandLogoProps) {
       <img
         src="/logo.svg"
         alt=""
-        className={isLarge ? 'h-20 w-20 select-none' : 'h-6 w-6 select-none'}
+        className={isLarge ? 'size-20 select-none' : 'size-6 select-none'}
         aria-hidden="true"
       />
       <span

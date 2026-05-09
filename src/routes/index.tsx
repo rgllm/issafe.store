@@ -150,7 +150,7 @@ function HomePage() {
           <BrandLogo size="lg" />
 
           <div className="flex flex-col gap-2">
-            <h1 className="m-0 text-balance text-3xl font-bold text-foreground">
+            <h1 className="m-0 text-balance text-3xl font-semibold text-foreground">
               Store Safety Risk Lookup
             </h1>
             <p className="m-0 max-w-lg text-pretty text-base leading-7 text-muted-foreground">
@@ -185,7 +185,7 @@ function HomePage() {
               >
                 {isSubmitting ? (
                   <Loader2
-                    className="h-4 w-4 animate-spin"
+                    className="size-4 animate-spin"
                     aria-hidden="true"
                   />
                 ) : null}
@@ -211,7 +211,7 @@ function HomePage() {
             {error ? (
               <p className="m-0 flex items-start gap-2 rounded-md border border-[var(--risk-line)] bg-[var(--risk-bg)] px-4 py-3 text-left text-sm font-medium text-[var(--signal-risk)]">
                 <AlertTriangle
-                  className="mt-0.5 h-4 w-4 flex-none"
+                  className="mt-0.5 size-4 flex-none"
                   aria-hidden="true"
                 />
                 {error}
@@ -227,7 +227,7 @@ function HomePage() {
         <div className="mx-auto max-w-5xl">
           <div className="flex flex-col gap-10">
             <div className="text-center">
-              <h2 className="m-0 text-balance text-2xl font-bold text-foreground">
+              <h2 className="m-0 text-balance text-2xl font-semibold text-foreground">
                 How We Check a Store
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-pretty text-base leading-7 text-muted-foreground">
@@ -247,9 +247,9 @@ function HomePage() {
                     className="flex flex-col gap-3 rounded-md border border-border bg-white p-5 dark:bg-card"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/8">
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary/8">
                         <Icon
-                          className="h-4 w-4 text-primary"
+                          className="size-4 text-primary"
                           aria-hidden="true"
                         />
                       </div>
