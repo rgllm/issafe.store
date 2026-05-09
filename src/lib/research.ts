@@ -830,8 +830,8 @@ export async function classifyEvidenceFactors(
     'Do not include a score or recommendation.',
     'Do not treat repeated search snippets as independent proof of risk.',
     'Treat SEO-style questions such as "is this store legit/scam/safe" as neutral unless the evidence asserts concrete fraud, non-delivery, counterfeit goods, chargebacks, phishing, malware, or a verified scam.',
-    'Generic complaints, refund friction, or bad reviews may be low/medium reputation risk, but must not be high or critical without concrete fraud evidence.',
-    'Low ratings and customer-service complaints are shopper experience signals, not scam proof; classify them as independent_reputation low or medium.',
+    'Generic complaints, refund friction, bad reviews, low ratings, and customer-service complaints are weak shopper-experience context, not primary safety evidence.',
+    'Classify ordinary review negativity as independent_reputation low only; use medium/high only for concrete fraud, non-delivery, counterfeit goods, chargebacks, phishing, malware, or verified scam evidence.',
     'Mentions that a submitted domain is the official website are identity context only, not a positive reputation signal by themselves.',
     `Store: ${request.hostname}`,
     'Evidence:',
@@ -908,7 +908,7 @@ export function tavilyResultToEvidence(result: TavilyResult, observedAt: string)
     url: result.url,
     snippet,
     sentiment: hasStrongNegativeTerm || hasNegativeTerm ? 'negative' : hasPositiveTerm ? 'positive' : 'neutral',
-    weight: hasStrongNegativeTerm ? 7 : hasNegativeTerm ? 4 : hasPositiveTerm ? 4 : 2,
+    weight: hasStrongNegativeTerm ? 7 : hasNegativeTerm ? 1 : hasPositiveTerm ? 2 : 2,
     observedAt,
   }
 }

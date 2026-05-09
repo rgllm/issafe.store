@@ -49,6 +49,11 @@ type RecommendationContext = {
 }
 
 const DEFAULT_FACTOR_WEIGHT = 5
+const ORDINARY_REVIEW_NOISE_CAP = 6
+const ORDINARY_REVIEW_NOISE_WITH_THREAT_CAP = 2
+const POSITIVE_REVIEW_TRUST_CAP = 5
+const CONCRETE_REPUTATION_THREAT_CAP = 35
+
 export const RECOMMENDATION_POLICY = {
   avoidScoreThreshold: 50,
   likelySafeScoreThreshold: 50,
@@ -69,24 +74,24 @@ const IMPACT_WEIGHTS: Record<
     negative: { low: 10, medium: 25, high: 45, critical: 70 },
   },
   domain_age: {
-    positive: { low: 4, medium: 10, high: 14, critical: 14 },
-    negative: { low: 7, medium: 15, high: 24, critical: 45 },
+    positive: { low: 5, medium: 12, high: 16, critical: 16 },
+    negative: { low: 8, medium: 18, high: 28, critical: 45 },
   },
   site_integrity: {
-    positive: { low: 3, medium: 8, high: 10, critical: 10 },
-    negative: { low: 6, medium: 15, high: 28, critical: 45 },
+    positive: { low: 4, medium: 10, high: 12, critical: 12 },
+    negative: { low: 7, medium: 17, high: 32, critical: 45 },
   },
   contact_identity: {
-    positive: { low: 5, medium: 9, high: 11, critical: 11 },
-    negative: { low: 4, medium: 8, high: 14, critical: 45 },
+    positive: { low: 6, medium: 11, high: 14, critical: 14 },
+    negative: { low: 5, medium: 10, high: 17, critical: 45 },
   },
   policy_completeness: {
-    positive: { low: 5, medium: 9, high: 11, critical: 11 },
-    negative: { low: 5, medium: 10, high: 16, critical: 45 },
+    positive: { low: 6, medium: 11, high: 14, critical: 14 },
+    negative: { low: 6, medium: 12, high: 19, critical: 45 },
   },
   independent_reputation: {
-    positive: { low: 8, medium: 16, high: 18, critical: 18 },
-    negative: { low: 8, medium: 16, high: 25, critical: 45 },
+    positive: { low: 2, medium: 5, high: 5, critical: 5 },
+    negative: { low: 3, medium: 5, high: 25, critical: 45 },
   },
   commerce_intent: {
     positive: { low: 4, medium: 4, high: 4, critical: 4 },
@@ -264,10 +269,10 @@ function aggregateFactorImpacts(factors: RiskFactor[]) {
     if (key === 'independent_reputation') {
       const negativeImpact = getReputationNegativeImpact(negativeFactors)
       riskPenalty += negativeImpact
-      trustBonus +=
-        negativeImpact > 0
-          ? Math.min(4, getStrongestImpact(positiveFactors, getPositiveImpact))
-          : getStrongestImpact(positiveFactors, getPositiveImpact)
+      trustBonus += Math.min(
+        POSITIVE_REVIEW_TRUST_CAP,
+        getStrongestImpact(positiveFactors, getPositiveImpact),
+      )
       continue
     }
 
@@ -317,16 +322,22 @@ function getReputationNegativeImpact(negativeFactors: RiskFactor[]) {
       (total, factor) => total + getNegativeImpact(factor),
       0,
     )
-    const reviewNoiseImpact = Math.min(6, serviceOrReviewFactors.length * 2)
+    const reviewNoiseImpact = Math.min(
+      ORDINARY_REVIEW_NOISE_CAP,
+      serviceOrReviewFactors.length * 2,
+    )
 
-    return Math.min(35, concreteImpact + reviewNoiseImpact)
+    return Math.min(
+      CONCRETE_REPUTATION_THREAT_CAP,
+      concreteImpact + Math.min(ORDINARY_REVIEW_NOISE_WITH_THREAT_CAP, reviewNoiseImpact),
+    )
   }
 
   const strongestReviewImpact = getStrongestImpact(serviceOrReviewFactors, getNegativeImpact)
   const repeatedReviewCount = Math.max(0, serviceOrReviewFactors.length - 1)
   const repeatedReviewImpact = Math.min(4, Math.ceil(Math.sqrt(repeatedReviewCount) * 2))
 
-  return Math.min(18, strongestReviewImpact + repeatedReviewImpact)
+  return Math.min(ORDINARY_REVIEW_NOISE_CAP, strongestReviewImpact + repeatedReviewImpact)
 }
 
 function countEvidenceSourceDiversity(evidence: Evidence[]) {

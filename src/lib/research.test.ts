@@ -341,7 +341,7 @@ describe('Tavily evidence mapping', () => {
     )
 
     expect(evidence.sentiment).toBe('negative')
-    expect(evidence.weight).toBe(4)
+    expect(evidence.weight).toBe(1)
   })
 
   it('does not treat official website mentions as positive reputation by themselves', () => {
@@ -394,6 +394,7 @@ describe('Tavily evidence mapping', () => {
         expect.objectContaining({
           title: 'Trusted independent reviews',
           sentiment: 'positive',
+          weight: 2,
         }),
       ]),
     )

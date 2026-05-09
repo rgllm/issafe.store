@@ -462,7 +462,7 @@ describe('scoreEvidence', () => {
     ])
 
     expect(result.score).toBeGreaterThanOrEqual(55)
-    expect(result.score).toBeLessThan(78)
+    expect(result.score).toBeGreaterThanOrEqual(78)
     expect(result.recommendation).toBe('safe')
   })
 
@@ -549,7 +549,7 @@ describe('scoreEvidence', () => {
   })
 
   it('keeps service-complaint repetition from escalating excessively', () => {
-    const resultFewComplaints = scoreEvidence([
+    const coreSignals = [
       ...basicStoreSignals,
       createEvidence({
         sourceType: 'store-site',
@@ -563,6 +563,10 @@ describe('scoreEvidence', () => {
         sentiment: 'positive',
         weight: 5,
       }),
+    ]
+    const resultWithoutComplaints = scoreEvidence(coreSignals)
+    const resultFewComplaints = scoreEvidence([
+      ...coreSignals,
       createEvidence({
         sourceType: 'review',
         title: 'Poor customer service complaints',
@@ -572,19 +576,7 @@ describe('scoreEvidence', () => {
       }),
     ])
     const resultManyComplaints = scoreEvidence([
-      ...basicStoreSignals,
-      createEvidence({
-        sourceType: 'store-site',
-        title: 'Visible contact or business details',
-        sentiment: 'positive',
-        weight: 5,
-      }),
-      createEvidence({
-        sourceType: 'store-site',
-        title: 'Customer policy coverage found',
-        sentiment: 'positive',
-        weight: 5,
-      }),
+      ...coreSignals,
       createEvidence({
         sourceType: 'review',
         title: 'Poor customer service complaints',
@@ -616,7 +608,39 @@ describe('scoreEvidence', () => {
     ])
 
     expect(resultManyComplaints.score).toBeLessThan(resultFewComplaints.score)
-    expect(resultFewComplaints.score - resultManyComplaints.score).toBeLessThanOrEqual(12)
+    expect(resultWithoutComplaints.score - resultManyComplaints.score).toBeLessThanOrEqual(6)
+  })
+
+  it('does not let positive reviews alone make incomplete signals look safe', () => {
+    const result = scoreEvidence([
+      ...basicStoreSignals,
+      createEvidence({
+        sourceType: 'review',
+        title: 'Positive reviews on independent platforms',
+        snippet: 'Customers mention trusted service and positive reviews.',
+        sentiment: 'positive',
+        weight: 10,
+      }),
+    ])
+
+    expect(result.score).toBeLessThan(70)
+    expect(result.recommendation).toBe('unknown')
+  })
+
+  it('keeps concrete fraud reports high impact', () => {
+    const result = scoreEvidence([
+      ...basicStoreSignals,
+      createEvidence({
+        sourceType: 'review',
+        title: 'Verified scam reports',
+        snippet: 'Customers report non-delivery, chargebacks, and counterfeit products.',
+        sentiment: 'negative',
+        weight: 7,
+      }),
+    ])
+
+    expect(result.score).toBeLessThan(50)
+    expect(result.recommendation).toBe('avoid')
   })
 
   it('matches baseline calibration scenarios', () => {

@@ -4,7 +4,7 @@ import { getCachedReport } from './reports-db'
 import type { StoreSafetyReport, StoreSafetyRequest } from '../types/report'
 import type { StoreSafetyAgent } from '../agents/store-safety-agent'
 
-const REPORT_CACHE_VERSION = 'score-calibration-2026-05-06-v2'
+const REPORT_CACHE_VERSION = 'score-calibration-2026-05-09-minimal-reviews-v1'
 
 export type StartCheckInput = {
   url: string
