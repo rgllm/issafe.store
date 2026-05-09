@@ -1,5 +1,5 @@
 import { Agent } from 'agents'
-import { runStoreResearch } from '../lib/research'
+import { getCacheTtlSeconds, runStoreResearch } from '../lib/research'
 import { saveReport } from '../lib/reports-db'
 import type {
   StoreSafetyReport,
@@ -25,7 +25,12 @@ export class StoreSafetyAgent extends Agent<Env, StoreSafetyState> {
     }
 
     const now = new Date().toISOString()
-    const queuedReport = createBaseReport(request, 'queued', 'Store safety check queued.')
+    const queuedReport = createBaseReport(
+      request,
+      'queued',
+      'Store safety check queued.',
+      this.env,
+    )
 
     this.setState({
       report: queuedReport,
@@ -47,13 +52,15 @@ export class StoreSafetyAgent extends Agent<Env, StoreSafetyState> {
         request,
         'researching',
         'Checking the store site, domain data, and external reputation signals.',
+        this.env,
       ),
       updatedAt: new Date().toISOString(),
     })
 
     try {
       const report = await runStoreResearch(request, this.env, (status, summary) => {
-        const current = this.state.report ?? createBaseReport(request, status, summary)
+        const current =
+          this.state.report ?? createBaseReport(request, status, summary, this.env)
 
         this.setState({
           report: {
@@ -80,7 +87,7 @@ export class StoreSafetyAgent extends Agent<Env, StoreSafetyState> {
 
       this.setState({
         report: {
-          ...createBaseReport(request, 'failed', message),
+          ...createBaseReport(request, 'failed', message, this.env),
           confidence: 10,
           recommendation: 'unknown',
         },
@@ -94,9 +101,12 @@ function createBaseReport(
   request: StoreSafetyRequest,
   status: StoreSafetyReport['status'],
   summary: string,
+  env: Env,
 ): StoreSafetyReport {
   const createdAt = new Date().toISOString()
-  const expiresAt = new Date(Date.now() + 86_400_000).toISOString()
+  const expiresAt = new Date(
+    Date.now() + getCacheTtlSeconds(env) * 1000,
+  ).toISOString()
 
   return {
     ...request,

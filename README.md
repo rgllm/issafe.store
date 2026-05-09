@@ -62,7 +62,7 @@ bun run build
 ### Non-secret vars (`wrangler.jsonc` -> `vars`)
 
 - `AI_MODEL` (default: `@cf/zai-org/glm-4.7-flash`)
-- `CACHE_TTL_SECONDS` (default: `86400`)
+- `CACHE_TTL_SECONDS` (default: `604800`)
 - `TURNSTILE_SITE_KEY` (empty disables Turnstile on UI)
 
 ### Secrets (set with Wrangler)

@@ -50,10 +50,10 @@ afterEach(() => {
 })
 
 describe('getCacheTtlSeconds', () => {
-  it('uses a 24 hour default for missing or invalid values', () => {
-    expect(getCacheTtlSeconds({})).toBe(86_400)
-    expect(getCacheTtlSeconds({ CACHE_TTL_SECONDS: '-1' })).toBe(86_400)
-    expect(getCacheTtlSeconds({ CACHE_TTL_SECONDS: 'not-a-number' })).toBe(86_400)
+  it('uses a 7 day default for missing or invalid values', () => {
+    expect(getCacheTtlSeconds({})).toBe(604_800)
+    expect(getCacheTtlSeconds({ CACHE_TTL_SECONDS: '-1' })).toBe(604_800)
+    expect(getCacheTtlSeconds({ CACHE_TTL_SECONDS: 'not-a-number' })).toBe(604_800)
   })
 
   it('uses a positive configured TTL', () => {

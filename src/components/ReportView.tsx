@@ -44,7 +44,7 @@ export function ReportView({
           Check another store
         </Link>
         <span className="text-xs font-medium text-[var(--sea-ink-soft)]">
-          {cached ? 'Cached result (up to 24 hours)' : formatStatus(report.status)}
+          {cached ? 'Cached result (up to 7 days)' : formatStatus(report.status)}
         </span>
       </div>
 

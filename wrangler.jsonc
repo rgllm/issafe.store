@@ -54,7 +54,7 @@
 	],
 	"vars": {
 		"AI_MODEL": "@cf/zai-org/glm-4.7-flash",
-		"CACHE_TTL_SECONDS": "86400",
+		"CACHE_TTL_SECONDS": "604800",
 		"TURNSTILE_SITE_KEY": ""
 	}
 	/**

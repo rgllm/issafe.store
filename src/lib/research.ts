@@ -141,6 +141,8 @@ const WEB_RISK_THREAT_TYPES = [
   'SOCIAL_ENGINEERING_EXTENDED_COVERAGE',
 ]
 
+export const DEFAULT_CACHE_TTL_SECONDS = 604_800
+
 export async function runStoreResearch(
   request: StoreSafetyRequest,
   env: ResearchEnv,
@@ -196,7 +198,7 @@ export function getCacheTtlSeconds(env: Pick<ResearchEnv, 'CACHE_TTL_SECONDS'>) 
   const parsed = Number(env.CACHE_TTL_SECONDS)
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
-    return 86_400
+    return DEFAULT_CACHE_TTL_SECONDS
   }
 
   return parsed
