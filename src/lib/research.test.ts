@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildTavilyQueries,
   classifyEvidenceFactors,
-  collectPhishTankEvidence,
+  collectOpenPhishEvidence,
   collectRdapEvidence,
   collectSiteEvidence,
   collectTavilyEvidence,
@@ -20,6 +20,15 @@ function jsonResponse(body: unknown, status = 200) {
     status,
     headers: {
       'content-type': 'application/json',
+    },
+  })
+}
+
+function textResponse(body: string, status = 200) {
+  return new Response(body, {
+    status,
+    headers: {
+      'content-type': 'text/plain',
     },
   })
 }
@@ -246,80 +255,54 @@ describe('threat provider mapping', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('maps verified PhishTank matches to negative evidence', async () => {
+  it('maps OpenPhish feed hostname matches to negative evidence', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
         Promise.resolve(
-          jsonResponse({
-            results: {
-              in_database: true,
-              valid: true,
-              verified: true,
-              phish_id: 123,
-            },
-          }),
+          textResponse('https://evil.example.org/other\nhttps://example.com/phish\n'),
         ),
       ),
     )
 
-    const evidence = await collectPhishTankEvidence('https://example.com/', {
-      PHISHTANK_APP_KEY: 'test-key',
-    })
+    const evidence = await collectOpenPhishEvidence('https://example.com/', 'example.com')
 
-    expect(evidence[0]?.title).toBe('PhishTank verified phishing match found')
+    expect(evidence[0]?.title).toBe('OpenPhish feed match found')
     expect(evidence[0]?.sentiment).toBe('negative')
-    expect(vi.mocked(fetch).mock.calls[0]?.[1]).toEqual(
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          'user-agent': 'phishtank/issafe-store',
-        }),
-      }),
-    )
-    expect(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)).toContain('app_key=test-key')
+    expect(evidence[0]?.snippet).toContain('https://example.com/phish')
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toContain('openphish/public_feed')
   })
 
-  it('maps clean PhishTank responses to neutral evidence', async () => {
+  it('treats www host and apex host as the same for OpenPhish', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          jsonResponse({
-            results: {
-              in_database: false,
-              valid: false,
-              verified: false,
-            },
-          }),
-        ),
-      ),
+      vi.fn(() => Promise.resolve(textResponse('http://example.com/login\n'))),
     )
 
-    const evidence = await collectPhishTankEvidence('https://example.com/')
+    const evidence = await collectOpenPhishEvidence('https://www.example.com/', 'www.example.com')
 
-    expect(evidence[0]?.title).toBe('No PhishTank phishing record found')
+    expect(evidence[0]?.title).toBe('OpenPhish feed match found')
+    expect(evidence[0]?.sentiment).toBe('negative')
+  })
+
+  it('maps clean OpenPhish feeds to neutral evidence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(textResponse('https://totally-other.test/path\n'))),
+    )
+
+    const evidence = await collectOpenPhishEvidence('https://example.com/', 'example.com')
+
+    expect(evidence[0]?.title).toBe('No OpenPhish feed match found')
     expect(evidence[0]?.sentiment).toBe('neutral')
   })
 
-  it('maps inactive PhishTank records to neutral evidence', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() =>
-        Promise.resolve(
-          jsonResponse({
-            results: {
-              in_database: true,
-              valid: 'n',
-              verified: 'n',
-            },
-          }),
-        ),
-      ),
-    )
+  it('maps failed OpenPhish feed fetches to neutral unavailable evidence', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(textResponse('bad', 500))))
 
-    const evidence = await collectPhishTankEvidence('https://example.com/')
+    const evidence = await collectOpenPhishEvidence('https://example.com/', 'example.com')
 
-    expect(evidence[0]?.title).toBe('No PhishTank phishing record found')
+    expect(evidence[0]?.title).toBe('OpenPhish feed check unavailable')
     expect(evidence[0]?.sentiment).toBe('neutral')
   })
 

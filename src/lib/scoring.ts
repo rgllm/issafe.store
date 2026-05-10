@@ -392,7 +392,7 @@ function evidenceToFactors(item: Evidence): RiskFactor[] {
   const text = `${item.title} ${item.snippet} ${item.url ?? ''}`.toLowerCase()
   const factors: RiskFactor[] = []
 
-  if (/urlhaus|phishtank|web risk|threat list|malware listing|phishing/i.test(text)) {
+  if (/urlhaus|openphish|phishtank|web risk|threat list|malware listing|phishing/i.test(text)) {
     factors.push(createThreatFactor(item, text))
   }
 

@@ -103,7 +103,7 @@ function ReportPage() {
       <main className="page-wrap flex min-h-[calc(100vh-12rem)] items-center justify-center px-4 py-14">
         <div className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--sea-ink-soft)]">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Loading your report...
+          Loading report...
         </div>
       </main>
     )

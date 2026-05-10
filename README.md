@@ -70,7 +70,6 @@ bun run build
 ```bash
 bunx wrangler secret put GOOGLE_WEB_RISK_API_KEY
 bunx wrangler secret put URLHAUS_AUTH_KEY
-bunx wrangler secret put PHISHTANK_APP_KEY
 bunx wrangler secret put TAVILY_API_KEY
 bunx wrangler secret put WHOISJSON_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
@@ -81,7 +80,7 @@ Behavior notes:
 - If `TURNSTILE_SECRET_KEY` is missing, backend verification is skipped.
 - If `TAVILY_API_KEY` is missing, external web reputation signals are reduced.
 - If `URLHAUS_AUTH_KEY` is missing, URLhaus malware checks are skipped.
-- If `PHISHTANK_APP_KEY` is missing, PhishTank checks still run with lower API limits.
+- Phishing URL overlap is checked against the public [OpenPhish feed](https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt) (no API key).
 - If `GOOGLE_WEB_RISK_API_KEY` is missing, Google Web Risk threat-list checks are skipped.
 - If `WHOISJSON_API_TOKEN` is missing, domain registration age checks are skipped.
 
@@ -196,7 +195,6 @@ bunx wrangler d1 migrations apply issafe-store
 ```bash
 bunx wrangler secret put GOOGLE_WEB_RISK_API_KEY
 bunx wrangler secret put URLHAUS_AUTH_KEY
-bunx wrangler secret put PHISHTANK_APP_KEY
 bunx wrangler secret put TAVILY_API_KEY
 bunx wrangler secret put WHOISJSON_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
@@ -231,7 +229,7 @@ bun run deploy
   Confirm `TAVILY_API_KEY` secret is set.
 
 - **Threat-list checks unavailable**  
-  Confirm `URLHAUS_AUTH_KEY` and `GOOGLE_WEB_RISK_API_KEY` secrets are set, and that Google Web Risk API is enabled for the key's Google Cloud project. `PHISHTANK_APP_KEY` is optional but recommended to reduce rate limiting.
+  Confirm `URLHAUS_AUTH_KEY` and `GOOGLE_WEB_RISK_API_KEY` secrets are set, and that Google Web Risk API is enabled for the key's Google Cloud project. OpenPhish uses a public feed; if that fetch fails, the check is skipped for scoring.
 
 - **Rate limit hits in development**  
   `CHECK_RATE_LIMIT` is active; wait for the window to reset or adjust configuration for your environment.

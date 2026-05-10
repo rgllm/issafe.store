@@ -7,7 +7,6 @@ type ResearchEnv = {
   AI_MODEL?: string
   CACHE_TTL_SECONDS?: string
   GOOGLE_WEB_RISK_API_KEY?: string
-  PHISHTANK_APP_KEY?: string
   TAVILY_API_KEY?: string
   URLHAUS_AUTH_KEY?: string
   WHOISJSON_API_TOKEN?: string
@@ -49,20 +48,17 @@ type UrlhausResponse = {
   }>
 }
 
-type PhishTankResponse = {
-  results?: {
-    in_database?: boolean
-    valid?: boolean | string
-    verified?: boolean | string
-    phish_id?: string | number
-  }
+/** Matches `GoogleCloudWebriskV1SearchUrisResponse` from Web Risk API v1 discovery. */
+type WebRiskSearchUrisResponse = {
+  threat?: WebRiskSearchUrisThreatUri
 }
 
-type WebRiskResponse = {
-  threat?: {
-    threatTypes?: string[]
-    expireTime?: string
-  }
+/** Matches `GoogleCloudWebriskV1SearchUrisResponseThreatUri`. */
+type WebRiskSearchUrisThreatUri = {
+  /** Threat lists this URI matched; omit or empty when not on a requested list. */
+  threatTypes?: string[]
+  /** RFC3339 — do not cache past this time (per API). */
+  expireTime?: string
 }
 
 type PolicyPage = {
@@ -136,14 +132,25 @@ const POSITIVE_TERMS = [
   'return policy',
 ]
 
+/** `threatTypes` query values for `uris:search` (excludes THREAT_TYPE_UNSPECIFIED per API semantics). */
 const WEB_RISK_THREAT_TYPES = [
   'MALWARE',
   'SOCIAL_ENGINEERING',
   'UNWANTED_SOFTWARE',
   'SOCIAL_ENGINEERING_EXTENDED_COVERAGE',
-]
+] as const
 
-const PHISHTANK_USER_AGENT = 'phishtank/issafe-store'
+/** Labels aligned with discovery `enumDescriptions` for `uris:search` threatTypes. */
+const WEB_RISK_THREAT_TYPE_LABELS: Record<string, string> = {
+  MALWARE: 'malware (any platform)',
+  SOCIAL_ENGINEERING: 'social engineering / phishing (any platform)',
+  UNWANTED_SOFTWARE: 'unwanted software (any platform)',
+  SOCIAL_ENGINEERING_EXTENDED_COVERAGE:
+    'social engineering / phishing (extended coverage list)',
+}
+
+const OPENPHISH_FEED_URL =
+  'https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt'
 
 export const DEFAULT_CACHE_TTL_SECONDS = 604_800
 
@@ -279,7 +286,7 @@ export async function collectSiteEvidence(normalizedUrl: string): Promise<Eviden
 
   const homepageText = htmlToText(home.html)
   const links = extractPolicyLinks(home.html, homepage)
-  const policyPages = await collectPolicyPages(links.slice(0, 5), observedAt)
+  const policyPages = await collectPolicyPages(links.slice(0, 5))
   const policyText = policyPages.map((page) => htmlToText(page.html)).join(' ')
   const combinedText = `${homepageText} ${policyText}`
   const hasContact = hasContactDetails(combinedText)
@@ -558,14 +565,11 @@ function normalizeWhoisJsonApiToken(token: string | undefined) {
 
 export async function collectThreatListEvidence(
   request: StoreSafetyRequest,
-  env: Pick<
-    ResearchEnv,
-    'GOOGLE_WEB_RISK_API_KEY' | 'PHISHTANK_APP_KEY' | 'URLHAUS_AUTH_KEY'
-  >,
+  env: Pick<ResearchEnv, 'GOOGLE_WEB_RISK_API_KEY' | 'URLHAUS_AUTH_KEY'>,
 ): Promise<Evidence[]> {
   const results = await Promise.allSettled([
     collectUrlhausEvidence(request.normalizedUrl, request.hostname, env),
-    collectPhishTankEvidence(request.normalizedUrl, env),
+    collectOpenPhishEvidence(request.normalizedUrl, request.hostname),
     collectWebRiskEvidence(request.normalizedUrl, env),
   ])
 
@@ -659,68 +663,84 @@ export async function collectUrlhausEvidence(
   }
 }
 
-export async function collectPhishTankEvidence(
-  normalizedUrl: string,
-  env: Pick<ResearchEnv, 'PHISHTANK_APP_KEY'> = {},
-): Promise<Evidence[]> {
-  const observedAt = new Date().toISOString()
-  const body = new URLSearchParams({
-    url: normalizedUrl,
-    format: 'json',
-  })
-
-  if (env.PHISHTANK_APP_KEY?.trim()) {
-    body.set('app_key', env.PHISHTANK_APP_KEY.trim())
+function openPhishHostMatchesListing(storeHostname: string, listingHostname: string) {
+  const store = storeHostname.toLowerCase()
+  const listing = listingHostname.toLowerCase()
+  if (store === listing) {
+    return true
   }
 
+  const stripWww = (host: string) => (host.startsWith('www.') ? host.slice(4) : host)
+
+  return stripWww(store) === stripWww(listing)
+}
+
+function findOpenPhishListingForHost(feedText: string, storeHostname: string): string | null {
+  for (const line of feedText.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed) {
+      continue
+    }
+
+    let listingUrl: URL
+    try {
+      listingUrl = new URL(trimmed)
+    } catch {
+      continue
+    }
+
+    if (listingUrl.protocol !== 'http:' && listingUrl.protocol !== 'https:') {
+      continue
+    }
+
+    if (openPhishHostMatchesListing(storeHostname, listingUrl.hostname)) {
+      return trimmed
+    }
+  }
+
+  return null
+}
+
+export async function collectOpenPhishEvidence(
+  normalizedUrl: string,
+  storeHostname: string,
+): Promise<Evidence[]> {
+  const observedAt = new Date().toISOString()
+
   try {
-    const response = await fetchWithTimeout('https://checkurl.phishtank.com/checkurl/', 6500, {
-      method: 'POST',
+    const response = await fetchWithTimeout(OPENPHISH_FEED_URL, 20_000, {
       headers: {
-        'content-type': 'application/x-www-form-urlencoded',
-        'user-agent': PHISHTANK_USER_AGENT,
+        accept: 'text/plain,*/*',
+        'user-agent':
+          'IsSafeStoreBot/1.0 (+https://issafe.store; store safety public signal checker)',
       },
-      body,
     })
 
     if (!response.ok) {
       return [
         providerUnavailableEvidence(
-          'PhishTank phishing check unavailable',
+          'OpenPhish feed check unavailable',
           observedAt,
-          describeHttpProviderStatus('PhishTank', response.status),
+          describeHttpProviderStatus('OpenPhish feed', response.status),
         ),
       ]
     }
 
-    const result = (await response.json()) as PhishTankResponse
-    const details = result.results
-    const isValid = details?.valid !== false && details?.valid !== 'n'
-    const isVerified = details?.verified === true || details?.verified === 'y'
+    const feedText = await response.text()
+    const listing = findOpenPhishListingForHost(feedText, storeHostname)
 
-    if (details?.in_database && isVerified && isValid) {
+    if (listing) {
+      const displayListing =
+        listing.length > 280 ? `${listing.slice(0, 277).trimEnd()}…` : listing
+
       return [
         {
           sourceType: 'technical',
-          title: 'PhishTank verified phishing match found',
-          url: 'https://phishtank.org/',
-          snippet: `PhishTank has a verified phishing record for this URL${details.phish_id ? ` (ID ${details.phish_id})` : ''}.`,
+          title: 'OpenPhish feed match found',
+          url: OPENPHISH_FEED_URL,
+          snippet: `The public OpenPhish feed lists this host. Example entry: ${displayListing}`,
           sentiment: 'negative',
           weight: 10,
-          observedAt,
-        },
-      ]
-    }
-
-    if (details?.in_database && isValid) {
-      return [
-        {
-          sourceType: 'technical',
-          title: 'PhishTank unverified phishing record found',
-          url: 'https://phishtank.org/',
-          snippet: 'PhishTank has an unverified record for this URL.',
-          sentiment: 'negative',
-          weight: 8,
           observedAt,
         },
       ]
@@ -729,9 +749,9 @@ export async function collectPhishTankEvidence(
     return [
       {
         sourceType: 'technical',
-        title: 'No PhishTank phishing record found',
-        url: 'https://phishtank.org/',
-        snippet: 'PhishTank did not return a phishing database match for this URL.',
+        title: 'No OpenPhish feed match found',
+        url: OPENPHISH_FEED_URL,
+        snippet: `The OpenPhish public feed did not list URLs for ${new URL(normalizedUrl).hostname}.`,
         sentiment: 'neutral',
         weight: 1,
         observedAt,
@@ -740,12 +760,32 @@ export async function collectPhishTankEvidence(
   } catch (error) {
     return [
       providerUnavailableEvidence(
-        'PhishTank phishing check unavailable',
+        'OpenPhish feed check unavailable',
         observedAt,
         describeProviderError(error),
       ),
     ]
   }
+}
+
+function formatWebRiskThreatTypeLabels(threatTypes: string[]): string {
+  return threatTypes
+    .filter((t) => t && t !== 'THREAT_TYPE_UNSPECIFIED')
+    .map((t) => WEB_RISK_THREAT_TYPE_LABELS[t] ?? t.replaceAll('_', ' ').toLowerCase())
+    .join(', ')
+}
+
+async function describeGoogleWebRiskErrorResponse(response: Response): Promise<string> {
+  const statusPart = describeHttpProviderStatus('Google Web Risk', response.status)
+  try {
+    const body = (await response.json()) as { error?: { message?: string } }
+    if (body.error?.message) {
+      return `${statusPart} ${body.error.message}`
+    }
+  } catch {
+    // ignore non-JSON or parse errors
+  }
+  return statusPart
 }
 
 export async function collectWebRiskEvidence(
@@ -787,21 +827,28 @@ export async function collectWebRiskEvidence(
         providerUnavailableEvidence(
           'Google Web Risk check unavailable',
           observedAt,
-          describeHttpProviderStatus('Google Web Risk', response.status),
+          await describeGoogleWebRiskErrorResponse(response),
         ),
       ]
     }
 
-    const result = (await response.json()) as WebRiskResponse
-    const threatTypes = result.threat?.threatTypes ?? []
+    const result = (await response.json()) as WebRiskSearchUrisResponse
+    const threatTypes = (result.threat?.threatTypes ?? []).filter(
+      (t) => t && t !== 'THREAT_TYPE_UNSPECIFIED',
+    )
+    const expireTime = result.threat?.expireTime
 
     if (threatTypes.length > 0) {
+      const labels = formatWebRiskThreatTypeLabels(threatTypes)
+      const expiryNote = expireTime
+        ? ` Match metadata expires at ${expireTime} (do not cache this result past that time).`
+        : ''
       return [
         {
           sourceType: 'technical',
           title: 'Google Web Risk threat match found',
           url: 'https://cloud.google.com/web-risk',
-          snippet: `Google Web Risk matched this URL against: ${threatTypes.join(', ')}.`,
+          snippet: `Google Web Risk matched this URL on: ${labels}.${expiryNote}`,
           sentiment: 'negative',
           weight: 10,
           observedAt,
@@ -814,7 +861,8 @@ export async function collectWebRiskEvidence(
         sourceType: 'technical',
         title: 'No Google Web Risk threat match found',
         url: 'https://cloud.google.com/web-risk',
-        snippet: 'Google Web Risk returned no threat-list match for this URL.',
+        snippet:
+          'Google Web Risk uris:search returned no threat match for this URI on the requested lists: malware, social engineering, unwanted software, and social engineering extended coverage.',
         sentiment: 'neutral',
         weight: 1,
         observedAt,
@@ -1044,7 +1092,7 @@ function buildFallbackSummary(hostname: string, recommendation: string) {
   return `${hostname} has mixed public signals. Use caution, check independent reviews, and prefer payment methods with buyer protection.`
 }
 
-async function collectPolicyPages(urls: string[], observedAt: string): Promise<PolicyPage[]> {
+async function collectPolicyPages(urls: string[]): Promise<PolicyPage[]> {
   const pages = await Promise.all(
     urls.map(async (url) => {
       const page = await fetchPage(url)
@@ -1119,10 +1167,6 @@ function describeProviderError(error: unknown) {
 function describeHttpProviderStatus(provider: string, status: number) {
   if (provider === 'Google Web Risk' && (status === 401 || status === 403)) {
     return `${provider} returned HTTP ${status}. Confirm the API key is valid, Web Risk is enabled for the Google Cloud project, and API key restrictions allow webrisk.googleapis.com.`
-  }
-
-  if (provider === 'PhishTank' && status === 509) {
-    return `${provider} returned HTTP 509. Set PHISHTANK_APP_KEY or wait for the rate-limit window to reset.`
   }
 
   if (status === 401 || status === 403) {

@@ -118,7 +118,7 @@ describe('scoreEvidence', () => {
         }),
         createEvidence({
           sourceType: 'technical',
-          title: 'No PhishTank phishing record found',
+          title: 'No OpenPhish feed match found',
           sentiment: 'neutral',
           weight: 1,
         }),
@@ -499,7 +499,7 @@ describe('scoreEvidence', () => {
       }),
       createEvidence({
         sourceType: 'technical',
-        title: 'PhishTank phishing check unavailable',
+        title: 'OpenPhish feed check unavailable',
         snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
         sentiment: 'neutral',
         weight: 1,
@@ -747,7 +747,7 @@ describe('scoreEvidence', () => {
       }),
       createEvidence({
         sourceType: 'technical',
-        title: 'PhishTank phishing check unavailable',
+        title: 'OpenPhish feed check unavailable',
         snippet: 'The provider did not return a usable result, so this signal is not included in the score.',
         sentiment: 'neutral',
         weight: 1,
