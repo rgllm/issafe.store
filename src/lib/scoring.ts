@@ -583,7 +583,7 @@ function createCommerceFactor(item: Evidence, text: string): RiskFactor {
   }
 
   if (/cart|checkout|shop now|add to cart|payment|storefront shopping signals/.test(text)) {
-    return createFactor('commerce_intent', 'neutral', 'low', 48, item.title, item.weight)
+    return createFactor('commerce_intent', 'positive', 'low', 48, item.title, item.weight)
   }
 
   return createFactor('commerce_intent', item.sentiment, 'low', 38, item.title, item.weight)

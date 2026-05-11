@@ -301,7 +301,7 @@ export async function collectSiteEvidence(normalizedUrl: string): Promise<Eviden
       title: 'Storefront shopping signals found',
       url: homepage.toString(),
       snippet: 'The site appears to present products, purchase flows, or payment-related language.',
-      sentiment: 'neutral',
+      sentiment: 'positive',
       weight: 2,
       observedAt,
     })

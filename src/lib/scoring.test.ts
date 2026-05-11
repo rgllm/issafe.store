@@ -200,7 +200,7 @@ describe('scoreEvidence', () => {
         sourceType: 'store-site',
         title: 'Storefront shopping signals found',
         snippet: 'The site appears to present products and payment-related language.',
-        sentiment: 'neutral',
+        sentiment: 'positive',
         weight: 2,
       }),
       createEvidence({
