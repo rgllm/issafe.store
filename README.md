@@ -149,26 +149,44 @@ flowchart TD
   home -->|POST /api/check| apiCheck[Check API route]
   apiCheck --> rateLimit[CHECK_RATE_LIMIT]
   apiCheck --> turnstile[Turnstile verification]
-  apiCheck --> cache[D1 cached report lookup]
-  cache -->|miss| agent[StoreSafetyAgent]
-  agent --> queue[Agent queued processCheck task]
-  queue --> research[Site, RDAP, threat-list, and reputation research]
-  research --> scoring[Evidence classification and scoring]
-  scoring --> ai[Workers AI summary]
-  ai --> d1[(D1 reports)]
+  turnstile --> startCheck[startStoreCheck]
+  startCheck --> normalize[Normalize URL and create cache ID]
+  normalize --> cache[D1 cached report lookup]
+  cache -->|hit| apiResponse[Return cached report]
+  cache -->|miss| agent[StoreSafetyAgent Durable Object]
+  agent --> state[Queued/in-progress agent state]
+  state --> queue[Agent queued processCheck task]
+  queue --> site[Store site evidence]
+  queue --> rdap[RDAP registration evidence]
+  queue --> threats[URLhaus, OpenPhish, Google Web Risk]
+  queue --> tavily[Tavily reputation and coupon search]
+  site --> evidence[Deduplicated evidence]
+  rdap --> evidence
+  threats --> evidence
+  tavily --> evidence
+  evidence --> classify[Workers AI evidence classification]
+  classify --> scoring[Deterministic score, confidence, recommendation]
+  scoring --> summary[Workers AI report summary]
+  tavily --> coupons[Coupon results]
+  summary --> complete[Complete report]
+  coupons --> complete
+  complete --> d1[(D1 reports)]
+  complete --> state
   home --> report[Report page]
   report -->|polls GET /api/check/:id| apiCheckId[Check-by-ID API route]
-  apiCheckId --> d1
-  apiCheckId --> agent
+  apiCheckId --> idCache[D1 cached report lookup]
+  idCache -->|hit| reportResponse[Return cached report]
+  idCache -->|miss| currentAgent[Read current agent state]
 ```
 
 Request flow:
 
 1. The homepage fetches `/api/config` for the public Turnstile site key.
 2. A user submits a store URL to `POST /api/check`.
-3. The API route rate-limits by connecting IP, verifies Turnstile when configured, normalizes the URL, and checks D1 for a cached report.
-4. On a cache miss, `StoreSafetyAgent` creates a queued report and processes the check asynchronously.
-5. The research pipeline collects store-page signals, RDAP registration data, threat-list matches, and external reputation evidence.
-6. The scoring layer deduplicates and classifies evidence, computes score/confidence/recommendation, and uses Workers AI to summarize the result.
-7. Completed reports are saved to D1 with an expiration timestamp.
-8. The report page polls `GET /api/check/:id` until the status is complete or failed.
+3. The API route rate-limits by connecting IP and verifies Turnstile when configured.
+4. `startStoreCheck` normalizes the URL, derives a cache ID from the current report cache version and hostname, and checks D1 for a non-expired report.
+5. On a cache miss, `StoreSafetyAgent` creates a queued report, stores it in Durable Object state, and processes the check asynchronously.
+6. The research pipeline collects store-page signals, RDAP registration data, threat-list matches, Tavily reputation evidence, and Tavily coupon results.
+7. Evidence is deduplicated, classified with Workers AI, scored deterministically, and summarized with Workers AI.
+8. Completed reports include evidence and coupons, update agent state, and are saved to D1 with an expiration timestamp.
+9. The report page polls `GET /api/check/:id`; that route returns a D1 cached report first, or falls back to current agent state while the check is still running.
