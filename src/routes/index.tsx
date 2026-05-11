@@ -33,9 +33,9 @@ const SIGNALS = [
   },
   {
     icon: Globe,
-    title: "WHOIS & Registration Data",
+    title: "RDAP Registration Data",
     description:
-      "Public WHOIS records reveal the registrar, registration country, and privacy shielding status. Stores hiding all contact information behind privacy proxies score higher risk.",
+      "Public RDAP records reveal when a domain was registered and whether the registry reports an active registration. Very new domains can be a warning sign for disposable scam stores.",
   },
   {
     icon: Star,

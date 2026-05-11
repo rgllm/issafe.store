@@ -40,6 +40,7 @@ export type ScoreResult = {
 type RecommendationContext = {
   categoryCount: number
   hasCriticalThreat: boolean
+  hasSupportedNegativeEvidence: boolean
   highNegativeCount: number
   highNonReputationNegativeCount: number
   highReputationNegativeCount: number
@@ -128,6 +129,8 @@ export function scoreEvidence(
   classifiedFactors: RiskFactor[] = [],
 ): ScoreResult {
   const factors = buildRiskFactors(evidence, classifiedFactors)
+  const hasSupportedNegativeEvidence =
+    evidence.length === 0 || evidence.some(hasNegativeEvidenceSupport)
   const categoryCount = countMeaningfulFactorCategories(factors)
   const sourceDiversity = countEvidenceSourceDiversity(evidence)
   const providerGapCount = factors.filter((factor) => factor.providerGap).length
@@ -186,6 +189,7 @@ export function scoreEvidence(
     recommendation: getRecommendation(score, confidence, {
       categoryCount,
       hasCriticalThreat,
+      hasSupportedNegativeEvidence,
       highNegativeCount,
       highNonReputationNegativeCount,
       highReputationNegativeCount,
@@ -206,6 +210,7 @@ export function getRecommendation(
       ? {
           categoryCount: contextOrEvidenceCount,
           hasCriticalThreat: false,
+          hasSupportedNegativeEvidence: true,
           highNegativeCount: 0,
           highNonReputationNegativeCount: 0,
           highReputationNegativeCount: 0,
@@ -219,7 +224,10 @@ export function getRecommendation(
     return 'avoid'
   }
 
-  if (score < RECOMMENDATION_POLICY.avoidScoreThreshold) {
+  if (
+    score < RECOMMENDATION_POLICY.avoidScoreThreshold &&
+    context.hasSupportedNegativeEvidence
+  ) {
     return 'avoid'
   }
 
@@ -244,10 +252,28 @@ export function buildRiskFactors(
   evidence: Evidence[],
   classifiedFactors: RiskFactor[] = [],
 ) {
+  const hasSupportedNegativeEvidence =
+    evidence.length === 0 || evidence.some(hasNegativeEvidenceSupport)
+
   return [
     ...evidence.flatMap((item) => evidenceToFactors(item)),
-    ...classifiedFactors.flatMap(normalizeRiskFactor),
+    ...classifiedFactors.flatMap((factor) =>
+      normalizeClassifiedRiskFactor(factor, hasSupportedNegativeEvidence),
+    ),
   ]
+}
+
+function normalizeClassifiedRiskFactor(
+  factor: RiskFactor,
+  hasSupportedNegativeEvidence: boolean,
+) {
+  const normalized = normalizeRiskFactor(factor)
+
+  if (hasSupportedNegativeEvidence) {
+    return normalized
+  }
+
+  return normalized.filter((item) => item.sentiment !== 'negative')
 }
 
 function aggregateFactorImpacts(factors: RiskFactor[]) {
@@ -361,6 +387,22 @@ function normalizeEvidenceHost(url?: string) {
   } catch {
     return 'unknown'
   }
+}
+
+function hasNegativeEvidenceSupport(item: Evidence) {
+  if (item.sentiment === 'negative') {
+    return true
+  }
+
+  const text = `${item.title} ${item.snippet} ${item.url ?? ''}`.toLowerCase()
+  const isCleanThreatResult = /no .*match|no .*listing|did not return|not found/.test(text)
+
+  return (
+    !isCleanThreatResult &&
+    /non-delivery|never arrived|not delivered|chargeback|counterfeit|fraudulent|reported fraud|fraud reports|fraudulent charges|fake store|stole money|verified scam|confirmed scam|match found|listing found|malware listing found|phishing match|unsafe|threat found|verified phish/.test(
+      text,
+    ) && !isAmbiguousScamQuestion(text)
+  )
 }
 
 function isConcreteReputationThreatFactor(factor: RiskFactor) {

@@ -71,7 +71,6 @@ bun run build
 bunx wrangler secret put GOOGLE_WEB_RISK_API_KEY
 bunx wrangler secret put URLHAUS_AUTH_KEY
 bunx wrangler secret put TAVILY_API_KEY
-bunx wrangler secret put WHOISJSON_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
 ```
 
@@ -82,7 +81,7 @@ Behavior notes:
 - If `URLHAUS_AUTH_KEY` is missing, URLhaus malware checks are skipped.
 - Phishing URL overlap is checked against the public [OpenPhish feed](https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt) (no API key).
 - If `GOOGLE_WEB_RISK_API_KEY` is missing, Google Web Risk threat-list checks are skipped.
-- If `WHOISJSON_API_TOKEN` is missing, domain registration age checks are skipped.
+- Domain registration age is checked through public RDAP over HTTPS (no API key).
 
 ### Cloudflare bindings used
 
@@ -196,7 +195,6 @@ bunx wrangler d1 migrations apply issafe-store
 bunx wrangler secret put GOOGLE_WEB_RISK_API_KEY
 bunx wrangler secret put URLHAUS_AUTH_KEY
 bunx wrangler secret put TAVILY_API_KEY
-bunx wrangler secret put WHOISJSON_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
 ```
 

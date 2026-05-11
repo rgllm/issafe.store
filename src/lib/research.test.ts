@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildTavilyQueries,
   classifyEvidenceFactors,
+  clearRdapBootstrapCacheForTests,
   collectOpenPhishEvidence,
   collectRdapEvidence,
   collectSiteEvidence,
@@ -14,6 +15,7 @@ import {
 import type { Evidence, StoreSafetyRequest } from '../types/report'
 
 const observedAt = '2026-05-04T00:00:00.000Z'
+const RDAP_BOOTSTRAP_URL = 'https://data.iana.org/rdap/dns.json'
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -54,7 +56,27 @@ function createEvidence(overrides: Partial<Evidence>): Evidence {
   }
 }
 
+function rdapBootstrapResponse(tld: string, baseUrl: string) {
+  return {
+    services: [[[tld], [baseUrl]]],
+  }
+}
+
+function rdapDomainResponse(eventDate: string, eventAction = 'registration') {
+  return {
+    objectClassName: 'domain',
+    events: [
+      {
+        eventAction,
+        eventDate,
+      },
+    ],
+  }
+}
+
 afterEach(() => {
+  clearRdapBootstrapCacheForTests()
+  vi.useRealTimers()
   vi.unstubAllGlobals()
 })
 
@@ -121,26 +143,29 @@ describe('site evidence collection', () => {
 })
 
 describe('RDAP evidence collection', () => {
-  it('looks up the registrable domain for www hosts', async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(
-        jsonResponse({
-          registered: true,
-          created: '2000-01-01T00:00:00Z',
-        }),
-      ),
-    )
+  it('looks up the registrable domain for www hosts through IANA bootstrap', async () => {
+    const fetchMock = vi.fn((input: string) => {
+      if (input === RDAP_BOOTSTRAP_URL) {
+        return Promise.resolve(
+          jsonResponse(rdapBootstrapResponse('com', 'https://rdap.example/')),
+        )
+      }
+
+      if (input === 'https://rdap.example/domain/zara.com') {
+        return Promise.resolve(jsonResponse(rdapDomainResponse('2000-01-01T00:00:00Z')))
+      }
+
+      return Promise.resolve(jsonResponse({}, 500))
+    })
     vi.stubGlobal('fetch', fetchMock)
 
-    const evidence = await collectRdapEvidence('www.zara.com', {
-      WHOISJSON_API_TOKEN: 'test-token',
-    })
+    const evidence = await collectRdapEvidence('www.zara.com')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://whoisjson.com/api/v1/whois/?domain=zara.com',
+      'https://rdap.example/domain/zara.com',
       expect.objectContaining({
         headers: expect.objectContaining({
-          Authorization: 'TOKEN=test-token',
+          Accept: 'application/rdap+json, application/json',
         }),
       }),
     )
@@ -148,49 +173,195 @@ describe('RDAP evidence collection', () => {
       expect.objectContaining({
         title: 'Domain older than three years',
         sentiment: 'positive',
-        sourceType: 'whois',
-        url: 'https://whoisjson.com/api/v1/whois/?domain=zara.com',
+        sourceType: 'rdap',
+        url: 'https://rdap.example/domain/zara.com',
+        snippet: 'RDAP registration date: 2000-01-01T00:00:00Z.',
       }),
     )
   })
 
-  it('accepts a copied TOKEN-prefixed WhoisJSON secret value', async () => {
-    const fetchMock = vi.fn(() =>
-      Promise.resolve(
-        jsonResponse({
-          registered: true,
-          age: { days: 1200 },
-        }),
-      ),
-    )
+  it('normalizes subdomains to the registrable domain for public suffixes', async () => {
+    const fetchMock = vi.fn((input: string) => {
+      if (input === RDAP_BOOTSTRAP_URL) {
+        return Promise.resolve(
+          jsonResponse(rdapBootstrapResponse('uk', 'https://rdap.uk.example/')),
+        )
+      }
+
+      if (input === 'https://rdap.uk.example/domain/example.co.uk') {
+        return Promise.resolve(jsonResponse(rdapDomainResponse('2000-01-01T00:00:00Z')))
+      }
+
+      return Promise.resolve(jsonResponse({}, 500))
+    })
     vi.stubGlobal('fetch', fetchMock)
 
-    await collectRdapEvidence('example.com', {
-      WHOISJSON_API_TOKEN: 'TOKEN=test-token',
-    })
+    await collectRdapEvidence('checkout.shop.example.co.uk')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://whoisjson.com/api/v1/whois/?domain=example.com',
+      'https://rdap.uk.example/domain/example.co.uk',
       expect.objectContaining({
         headers: expect.objectContaining({
-          Authorization: 'TOKEN=test-token',
+          Accept: 'application/rdap+json, application/json',
         }),
       }),
     )
   })
 
-  it('returns neutral evidence when the WhoisJSON token is missing', async () => {
-    const fetchMock = vi.fn()
+  it('preserves the recent-domain scoring thresholds', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-05-04T00:00:00Z'))
+
+    const fetchMock = vi.fn((input: string) => {
+      if (input === RDAP_BOOTSTRAP_URL) {
+        return Promise.resolve(
+          jsonResponse(rdapBootstrapResponse('com', 'https://rdap.example/')),
+        )
+      }
+
+      if (input === 'https://rdap.example/domain/example.com') {
+        return Promise.resolve(jsonResponse(rdapDomainResponse('2026-03-10T00:00:00Z')))
+      }
+
+      return Promise.resolve(jsonResponse({}, 500))
+    })
     vi.stubGlobal('fetch', fetchMock)
 
     const evidence = await collectRdapEvidence('example.com')
 
-    expect(fetchMock).not.toHaveBeenCalled()
     expect(evidence[0]).toEqual(
       expect.objectContaining({
-        title: 'Domain registration lookup was skipped',
+        title: 'Domain registered less than 90 days ago',
+        sentiment: 'negative',
+        sourceType: 'rdap',
+      }),
+    )
+  })
+
+  it('returns negative evidence for RDAP 404 domain responses', async () => {
+    const fetchMock = vi.fn((input: string) => {
+      if (input === RDAP_BOOTSTRAP_URL) {
+        return Promise.resolve(
+          jsonResponse(rdapBootstrapResponse('com', 'https://rdap.example/')),
+        )
+      }
+
+      if (input === 'https://rdap.example/domain/example.com') {
+        return Promise.resolve(jsonResponse({}, 404))
+      }
+
+      return Promise.resolve(jsonResponse({}, 500))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectRdapEvidence('example.com')
+
+    expect(evidence[0]).toEqual(
+      expect.objectContaining({
+        title: 'Domain does not appear to be registered',
+        sentiment: 'negative',
+        sourceType: 'rdap',
+      }),
+    )
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      'https://rdap.org/domain/example.com',
+      expect.anything(),
+    )
+  })
+
+  it('falls back to rdap.org when IANA bootstrap fails', async () => {
+    const fetchMock = vi.fn((input: string) => {
+      if (input === RDAP_BOOTSTRAP_URL) {
+        return Promise.resolve(jsonResponse({}, 500))
+      }
+
+      if (input === 'https://rdap.org/domain/example.com') {
+        return Promise.resolve(jsonResponse(rdapDomainResponse('2000-01-01T00:00:00Z')))
+      }
+
+      return Promise.resolve(jsonResponse({}, 500))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectRdapEvidence('example.com')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://rdap.org/domain/example.com',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Accept: 'application/rdap+json, application/json',
+        }),
+      }),
+    )
+    expect(evidence[0]).toEqual(
+      expect.objectContaining({
+        title: 'Domain older than three years',
+        sentiment: 'positive',
+        sourceType: 'rdap',
+        url: 'https://rdap.org/domain/example.com',
+      }),
+    )
+  })
+
+  it('returns neutral evidence when RDAP records omit registration events', async () => {
+    const fetchMock = vi.fn((input: string) => {
+      if (input === RDAP_BOOTSTRAP_URL) {
+        return Promise.resolve(
+          jsonResponse(rdapBootstrapResponse('com', 'https://rdap.example/')),
+        )
+      }
+
+      if (
+        input === 'https://rdap.example/domain/example.com' ||
+        input === 'https://rdap.org/domain/example.com'
+      ) {
+        return Promise.resolve(
+          jsonResponse(rdapDomainResponse('2030-01-01T00:00:00Z', 'expiration')),
+        )
+      }
+
+      return Promise.resolve(jsonResponse({}, 500))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectRdapEvidence('example.com')
+
+    expect(evidence[0]).toEqual(
+      expect.objectContaining({
+        title: 'RDAP record found without registration age',
         sentiment: 'neutral',
-        sourceType: 'whois',
+        sourceType: 'rdap',
+      }),
+    )
+  })
+
+  it('returns neutral evidence when RDAP is rate limited', async () => {
+    const fetchMock = vi.fn((input: string) => {
+      if (input === RDAP_BOOTSTRAP_URL) {
+        return Promise.resolve(
+          jsonResponse(rdapBootstrapResponse('com', 'https://rdap.example/')),
+        )
+      }
+
+      if (
+        input === 'https://rdap.example/domain/example.com' ||
+        input === 'https://rdap.org/domain/example.com'
+      ) {
+        return Promise.resolve(jsonResponse({}, 429))
+      }
+
+      return Promise.resolve(jsonResponse({}, 500))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectRdapEvidence('example.com')
+
+    expect(evidence[0]).toEqual(
+      expect.objectContaining({
+        title: 'Domain registration lookup was inconclusive',
+        snippet: 'RDAP returned HTTP 429.',
+        sentiment: 'neutral',
+        sourceType: 'rdap',
       }),
     )
   })
@@ -329,7 +500,7 @@ describe('threat provider mapping', () => {
     expect(match[0]?.title).toBe('Google Web Risk threat match found')
     expect(match[0]?.sentiment).toBe('negative')
     expect(clean[0]?.title).toBe('No Google Web Risk threat match found')
-    expect(clean[0]?.sentiment).toBe('neutral')
+    expect(clean[0]?.sentiment).toBe('positive')
   })
 })
 
@@ -409,7 +580,7 @@ describe('Tavily evidence mapping', () => {
               },
               {
                 title: 'Trusted independent reviews',
-                content: 'Customers mention trusted service and positive reviews.',
+                content: 'Customers mention trusted service and positive reviews for example.com.',
                 score: 0.7,
               },
             ],
@@ -434,6 +605,101 @@ describe('Tavily evidence mapping', () => {
         }),
       ]),
     )
+  })
+
+  it('keeps Tavily review results for the exact searched domain', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            results: [
+              {
+                title: 'Zara Portugal customer reviews',
+                content: 'Read Customer Service Reviews of zara.pt.',
+                url: 'https://www.trustpilot.com/review/zara.pt',
+                score: 0.8,
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    const evidence = await collectTavilyEvidence('zara.pt', {
+      TAVILY_API_KEY: 'test-key',
+    })
+
+    expect(evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Zara Portugal customer reviews',
+          url: 'https://www.trustpilot.com/review/zara.pt',
+        }),
+      ]),
+    )
+  })
+
+  it.each([
+    {
+      hostname: 'zara.pt',
+      title: 'Zara Spain customer reviews',
+      content: 'Read Customer Service Reviews of zara.es.',
+      url: 'https://www.trustpilot.com/review/zara.es',
+    },
+    {
+      hostname: 'zara.pt',
+      title: 'Zara customer reviews',
+      content: 'Read Customer Service Reviews of zara.com.',
+      url: 'https://www.trustpilot.com/review/zara.com',
+    },
+    {
+      hostname: 'zara.pt',
+      title: 'Zara Portugal customer reviews',
+      content: 'Read Customer Service Reviews of www.zara.pt.',
+      url: 'https://www.trustpilot.com/review/www.zara.pt',
+    },
+    {
+      hostname: 'www.zara.pt',
+      title: 'Zara Portugal customer reviews',
+      content: 'Read Customer Service Reviews of zara.pt.',
+      url: 'https://www.trustpilot.com/review/zara.pt',
+    },
+    {
+      hostname: 'zara.pt',
+      title: 'Not Zara customer reviews',
+      content: 'Read Customer Service Reviews of notzara.pt and zara.pt.example.com.',
+      url: 'https://www.trustpilot.com/review/zara.pt.example.com',
+    },
+  ])('rejects Tavily results that do not match the literal searched domain: $url', async (result) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            results: [
+              {
+                title: result.title,
+                content: result.content,
+                url: result.url,
+                score: 0.8,
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    const evidence = await collectTavilyEvidence(result.hostname, {
+      TAVILY_API_KEY: 'test-key',
+    })
+
+    expect(evidence).toEqual([
+      expect.objectContaining({
+        title: 'External reputation search returned no usable results',
+        sourceType: 'technical',
+      }),
+    ])
   })
 })
 

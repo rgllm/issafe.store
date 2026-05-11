@@ -134,8 +134,7 @@ describe('scoreEvidence', () => {
       ],
     )
 
-    expect(result.score).toBeGreaterThanOrEqual(64)
-    expect(result.score).toBeLessThan(78)
+    expect(result.score).toBeGreaterThanOrEqual(78)
     expect(result.confidence).toBeGreaterThanOrEqual(70)
     expect(result.recommendation).toBe('safe')
   })
@@ -625,6 +624,104 @@ describe('scoreEvidence', () => {
 
     expect(result.score).toBeLessThan(70)
     expect(result.recommendation).toBe('unknown')
+  })
+
+  it('does not return avoid for positive-only evidence with high confidence', () => {
+    const result = scoreEvidence([
+      ...basicStoreSignals,
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Visible contact or business details',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'store-site',
+        title: 'Customer policy coverage found',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'rdap',
+        title: 'Domain older than three years',
+        sentiment: 'positive',
+        weight: 7,
+      }),
+      createEvidence({
+        sourceType: 'review',
+        title: 'Positive reviews on independent platforms',
+        snippet: 'Customers mention trusted service and positive reviews.',
+        sentiment: 'positive',
+        weight: 5,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'No URLhaus malware listing found',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+      createEvidence({
+        sourceType: 'technical',
+        title: 'No OpenPhish feed match found',
+        sentiment: 'neutral',
+        weight: 1,
+      }),
+    ])
+
+    expect(result.confidence).toBeGreaterThanOrEqual(90)
+    expect(result.recommendation).not.toBe('avoid')
+  })
+
+  it('ignores unsupported classified negatives when visible evidence has no negative support', () => {
+    const result = scoreEvidence(
+      [
+        ...basicStoreSignals,
+        createEvidence({
+          sourceType: 'store-site',
+          title: 'Visible contact or business details',
+          sentiment: 'positive',
+          weight: 5,
+        }),
+        createEvidence({
+          sourceType: 'store-site',
+          title: 'Customer policy coverage found',
+          sentiment: 'positive',
+          weight: 5,
+        }),
+        createEvidence({
+          sourceType: 'rdap',
+          title: 'Domain older than three years',
+          sentiment: 'positive',
+          weight: 7,
+        }),
+        createEvidence({
+          sourceType: 'technical',
+          title: 'No URLhaus malware listing found',
+          snippet: 'URLhaus did not return a malware URL match for the submitted store.',
+          sentiment: 'neutral',
+          weight: 1,
+        }),
+      ],
+      [
+        {
+          key: 'threat_list',
+          sentiment: 'negative',
+          severity: 'critical',
+          confidence: 96,
+          reason: 'Unsupported hidden model classification.',
+        },
+        {
+          key: 'policy_completeness',
+          sentiment: 'negative',
+          severity: 'high',
+          confidence: 90,
+          reason: 'Unsupported hidden model classification.',
+        },
+      ],
+    )
+
+    expect(result.score).toBeGreaterThanOrEqual(50)
+    expect(result.recommendation).not.toBe('avoid')
   })
 
   it('keeps concrete fraud reports high impact', () => {

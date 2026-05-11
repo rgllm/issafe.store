@@ -12,9 +12,6 @@ export default function Header() {
           <a href="/#how-we-check" className="hidden no-underline transition-colors hover:text-foreground sm:inline">
             How it works
           </a>
-          <a href="#" className="no-underline transition-colors hover:text-foreground">
-            API
-          </a>
         </nav>
       </div>
     </header>

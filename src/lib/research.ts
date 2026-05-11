@@ -1,3 +1,4 @@
+import { getDomain } from 'tldts'
 import { dedupeEvidence, scoreEvidence } from './scoring'
 import type { RiskFactor, RiskFactorKey } from './scoring'
 import type { Evidence, StoreSafetyReport, StoreSafetyRequest } from '../types/report'
@@ -9,7 +10,6 @@ type ResearchEnv = {
   GOOGLE_WEB_RISK_API_KEY?: string
   TAVILY_API_KEY?: string
   URLHAUS_AUTH_KEY?: string
-  WHOISJSON_API_TOKEN?: string
 }
 
 type TavilyQuery = {
@@ -66,6 +66,35 @@ type PolicyPage = {
   html: string
   title: string | null
 }
+
+type RdapBootstrap = {
+  services?: Array<[string[], string[]]>
+}
+
+type RdapDomainResponse = {
+  objectClassName?: string
+  events?: Array<{
+    eventAction?: string
+    eventDate?: string
+  }>
+}
+
+type RdapFetchResult =
+  | {
+      status: 'found'
+      url: string
+      data: RdapDomainResponse
+    }
+  | {
+      status: 'not-found'
+      url: string
+      httpStatus: number
+    }
+  | {
+      status: 'inconclusive'
+      url: string
+      httpStatus?: number
+    }
 
 const RISK_FACTOR_KEYS: RiskFactorKey[] = [
   'threat_list',
@@ -151,8 +180,17 @@ const WEB_RISK_THREAT_TYPE_LABELS: Record<string, string> = {
 
 const OPENPHISH_FEED_URL =
   'https://raw.githubusercontent.com/openphish/public_feed/refs/heads/main/feed.txt'
+const RDAP_BOOTSTRAP_URL = 'https://data.iana.org/rdap/dns.json'
+const RDAP_FALLBACK_BASE_URL = 'https://rdap.org/'
+const RDAP_FETCH_TIMEOUT_MS = 4500
+
+let rdapBootstrapPromise: Promise<RdapBootstrap> | null = null
 
 export const DEFAULT_CACHE_TTL_SECONDS = 604_800
+
+export function clearRdapBootstrapCacheForTests() {
+  rdapBootstrapPromise = null
+}
 
 export async function runStoreResearch(
   request: StoreSafetyRequest,
@@ -169,7 +207,7 @@ export async function runStoreResearch(
   const siteEvidence = await collectSiteEvidence(request.normalizedUrl)
   reportProgress?.('researching', 'Checking domain registration data.')
 
-  const rdapEvidence = await collectRdapEvidence(request.hostname, env)
+  const rdapEvidence = await collectRdapEvidence(request.hostname)
   reportProgress?.('researching', 'Checking public threat-list signals.')
 
   const threatEvidence = await collectThreatListEvidence(request, env)
@@ -377,66 +415,20 @@ export async function collectSiteEvidence(normalizedUrl: string): Promise<Eviden
   ]
 }
 
-export async function collectRdapEvidence(
-  hostname: string,
-  env: Pick<ResearchEnv, 'WHOISJSON_API_TOKEN'> = {},
-): Promise<Evidence[]> {
+export async function collectRdapEvidence(hostname: string): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
-  const apiToken = normalizeWhoisJsonApiToken(env.WHOISJSON_API_TOKEN)
-  const lookupDomain = getWhoisLookupDomain(hostname)
-  const lookupUrl = `https://whoisjson.com/api/v1/whois/?domain=${encodeURIComponent(lookupDomain)}`
-
-  if (!apiToken) {
-    return [
-      {
-        sourceType: 'whois',
-        title: 'Domain registration lookup was skipped',
-        url: 'https://whoisjson.com/api/v1/whois',
-        snippet: 'Set WHOISJSON_API_TOKEN to include WhoisJSON domain registration checks.',
-        sentiment: 'neutral',
-        weight: 1,
-        observedAt,
-      },
-    ]
-  }
+  const lookupDomain = getRdapLookupDomain(hostname)
 
   try {
-    const response = await fetchWithTimeout(lookupUrl, 4500, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `TOKEN=${apiToken}`,
-      },
-    })
+    const result = await lookupRdapDomain(lookupDomain)
 
-    if (!response.ok) {
+    if (result.status === 'not-found') {
       return [
         {
-          sourceType: 'whois',
-          title: 'Domain registration lookup was inconclusive',
-          url: lookupUrl,
-          snippet: `WhoisJSON returned HTTP ${response.status}.`,
-          sentiment: 'neutral',
-          weight: 2,
-          observedAt,
-        },
-      ]
-    }
-
-    const data = (await response.json()) as {
-      registered?: boolean
-      created?: string
-      age?: {
-        days?: number
-      }
-    }
-
-    if (data.registered === false) {
-      return [
-        {
-          sourceType: 'whois',
+          sourceType: 'rdap',
           title: 'Domain does not appear to be registered',
-          url: lookupUrl,
-          snippet: 'WhoisJSON reports this domain is not currently registered.',
+          url: result.url,
+          snippet: 'RDAP did not find an active registration for this domain.',
           sentiment: 'negative',
           weight: 8,
           observedAt,
@@ -444,20 +436,34 @@ export async function collectRdapEvidence(
       ]
     }
 
-    const registeredAt = data.created
-    const domainAgeDays = Number.isFinite(data.age?.days)
-      ? data.age?.days ?? null
-      : registeredAt
-        ? Math.floor((Date.now() - new Date(registeredAt).getTime()) / 86_400_000)
-        : null
+    if (result.status === 'inconclusive') {
+      return [
+        {
+          sourceType: 'rdap',
+          title: 'Domain registration lookup was inconclusive',
+          url: result.url,
+          snippet: result.httpStatus
+            ? `RDAP returned HTTP ${result.httpStatus}.`
+            : 'The RDAP lookup did not return a usable registration record.',
+          sentiment: 'neutral',
+          weight: 2,
+          observedAt,
+        },
+      ]
+    }
+
+    const registeredAt = getRdapRegistrationDate(result.data)
+    const domainAgeDays = registeredAt
+      ? Math.floor((Date.now() - new Date(registeredAt).getTime()) / 86_400_000)
+      : null
 
     if (domainAgeDays === null) {
       return [
         {
-          sourceType: 'whois',
-          title: 'WHOIS record found without registration age',
-          url: lookupUrl,
-          snippet: 'WhoisJSON returned a public domain record, but no registration date was available.',
+          sourceType: 'rdap',
+          title: 'RDAP record found without registration age',
+          url: result.url,
+          snippet: 'RDAP returned a domain record, but no registration event date was available.',
           sentiment: 'neutral',
           weight: 2,
           observedAt,
@@ -468,10 +474,10 @@ export async function collectRdapEvidence(
     if (domainAgeDays < 30) {
       return [
         {
-          sourceType: 'whois',
+          sourceType: 'rdap',
           title: 'Domain registered less than 30 days ago',
-          url: lookupUrl,
-          snippet: `WhoisJSON indicates this domain was registered about ${domainAgeDays} days ago.`,
+          url: result.url,
+          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 8,
           observedAt,
@@ -482,10 +488,10 @@ export async function collectRdapEvidence(
     if (domainAgeDays < 90) {
       return [
         {
-          sourceType: 'whois',
+          sourceType: 'rdap',
           title: 'Domain registered less than 90 days ago',
-          url: lookupUrl,
-          snippet: `WhoisJSON indicates this domain was registered about ${domainAgeDays} days ago.`,
+          url: result.url,
+          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 6,
           observedAt,
@@ -496,10 +502,10 @@ export async function collectRdapEvidence(
     if (domainAgeDays < 365) {
       return [
         {
-          sourceType: 'whois',
+          sourceType: 'rdap',
           title: 'Domain registered less than one year ago',
-          url: lookupUrl,
-          snippet: `WhoisJSON indicates this domain was registered about ${domainAgeDays} days ago.`,
+          url: result.url,
+          snippet: `RDAP indicates this domain was registered about ${domainAgeDays} days ago.`,
           sentiment: 'negative',
           weight: 3,
           observedAt,
@@ -510,12 +516,10 @@ export async function collectRdapEvidence(
     if (domainAgeDays > 1095) {
       return [
         {
-          sourceType: 'whois',
+          sourceType: 'rdap',
           title: 'Domain older than three years',
-          url: lookupUrl,
-          snippet: registeredAt
-            ? `WhoisJSON registration date: ${registeredAt}.`
-            : `WhoisJSON reports this domain is about ${domainAgeDays} days old.`,
+          url: result.url,
+          snippet: `RDAP registration date: ${registeredAt}.`,
           sentiment: 'positive',
           weight: 7,
           observedAt,
@@ -525,12 +529,10 @@ export async function collectRdapEvidence(
 
     return [
       {
-        sourceType: 'whois',
+        sourceType: 'rdap',
         title: 'Domain older than one year',
-        url: lookupUrl,
-        snippet: registeredAt
-          ? `WhoisJSON registration date: ${registeredAt}.`
-          : `WhoisJSON reports this domain is about ${domainAgeDays} days old.`,
+        url: result.url,
+        snippet: `RDAP registration date: ${registeredAt}.`,
         sentiment: 'positive',
         weight: 4,
         observedAt,
@@ -539,10 +541,10 @@ export async function collectRdapEvidence(
   } catch {
     return [
       {
-        sourceType: 'whois',
+        sourceType: 'rdap',
         title: 'Domain registration lookup failed',
-        url: lookupUrl,
-        snippet: 'The WhoisJSON lookup did not complete before the timeout.',
+        url: `https://rdap.org/domain/${encodeURIComponent(lookupDomain)}`,
+        snippet: 'The RDAP lookup did not complete before the timeout.',
         sentiment: 'neutral',
         weight: 1,
         observedAt,
@@ -555,12 +557,221 @@ function isAutomatedAccessBlocked(status: number | undefined) {
   return status === 401 || status === 403 || status === 429
 }
 
-function getWhoisLookupDomain(hostname: string) {
-  return hostname.startsWith('www.') ? hostname.slice(4) : hostname
+function getRdapLookupDomain(hostname: string) {
+  const normalizedHostname = hostname.trim().replace(/\.$/, '').toLowerCase()
+
+  return getDomain(normalizedHostname) ?? normalizedHostname
 }
 
-function normalizeWhoisJsonApiToken(token: string | undefined) {
-  return token?.trim().replace(/^token=/i, '').trim()
+async function lookupRdapDomain(domain: string): Promise<RdapFetchResult> {
+  let primaryResult: RdapFetchResult | null = null
+  const primaryUrl = await getIanaRdapDomainUrl(domain).catch(() => null)
+
+  if (primaryUrl) {
+    primaryResult = await fetchRdapDomain(primaryUrl)
+
+    if (primaryResult.status === 'not-found') {
+      return primaryResult
+    }
+
+    if (
+      primaryResult.status === 'found' &&
+      getRdapRegistrationDate(primaryResult.data)
+    ) {
+      return primaryResult
+    }
+  }
+
+  const fallbackUrl = buildRdapDomainUrl(RDAP_FALLBACK_BASE_URL, domain)
+
+  if (fallbackUrl !== primaryUrl) {
+    const fallbackResult = await fetchRdapDomain(fallbackUrl)
+
+    if (primaryResult?.status === 'found' && fallbackResult.status !== 'found') {
+      return primaryResult
+    }
+
+    return fallbackResult
+  }
+
+  return (
+    primaryResult ?? {
+      status: 'inconclusive',
+      url: fallbackUrl,
+    }
+  )
+}
+
+async function getIanaRdapDomainUrl(domain: string) {
+  const bootstrap = await getRdapBootstrap()
+  const baseUrl = findRdapBaseUrl(domain, bootstrap)
+
+  return baseUrl ? buildRdapDomainUrl(baseUrl, domain) : null
+}
+
+function getRdapBootstrap() {
+  if (!rdapBootstrapPromise) {
+    rdapBootstrapPromise = fetchRdapBootstrap().catch((error) => {
+      rdapBootstrapPromise = null
+      throw error
+    })
+  }
+
+  return rdapBootstrapPromise
+}
+
+async function fetchRdapBootstrap(): Promise<RdapBootstrap> {
+  const response = await fetchWithTimeout(RDAP_BOOTSTRAP_URL, RDAP_FETCH_TIMEOUT_MS, {
+    headers: {
+      Accept: 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error(`RDAP bootstrap returned HTTP ${response.status}.`)
+  }
+
+  const data = (await response.json()) as unknown
+
+  if (!isRecord(data) || !Array.isArray(data.services)) {
+    throw new Error('RDAP bootstrap response was not usable.')
+  }
+
+  return data as RdapBootstrap
+}
+
+function findRdapBaseUrl(domain: string, bootstrap: RdapBootstrap) {
+  let bestMatch: { suffixLength: number; baseUrl: string } | null = null
+
+  for (const service of bootstrap.services ?? []) {
+    const suffixes = service[0]
+    const baseUrls = service[1]
+
+    if (!Array.isArray(suffixes) || !Array.isArray(baseUrls)) {
+      continue
+    }
+
+    const baseUrl = baseUrls.find((url) => typeof url === 'string' && url.length > 0)
+
+    if (!baseUrl) {
+      continue
+    }
+
+    for (const suffix of suffixes) {
+      if (typeof suffix !== 'string') {
+        continue
+      }
+
+      const normalizedSuffix = suffix.toLowerCase()
+      const domainMatches =
+        domain === normalizedSuffix || domain.endsWith(`.${normalizedSuffix}`)
+
+      if (
+        domainMatches &&
+        (!bestMatch || normalizedSuffix.length > bestMatch.suffixLength)
+      ) {
+        bestMatch = {
+          suffixLength: normalizedSuffix.length,
+          baseUrl,
+        }
+      }
+    }
+  }
+
+  return bestMatch?.baseUrl ?? null
+}
+
+function buildRdapDomainUrl(baseUrl: string, domain: string) {
+  const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`
+
+  return new URL(`domain/${encodeURIComponent(domain)}`, normalizedBaseUrl).toString()
+}
+
+async function fetchRdapDomain(url: string): Promise<RdapFetchResult> {
+  try {
+    const response = await fetchWithTimeout(url, RDAP_FETCH_TIMEOUT_MS, {
+      headers: {
+        Accept: 'application/rdap+json, application/json',
+      },
+    })
+
+    if (response.status === 404) {
+      return {
+        status: 'not-found',
+        url,
+        httpStatus: response.status,
+      }
+    }
+
+    if (!response.ok) {
+      return {
+        status: 'inconclusive',
+        url,
+        httpStatus: response.status,
+      }
+    }
+
+    const data = (await response.json().catch(() => null)) as unknown
+
+    if (!isRecord(data)) {
+      return {
+        status: 'inconclusive',
+        url,
+      }
+    }
+
+    return {
+      status: 'found',
+      url,
+      data: data as RdapDomainResponse,
+    }
+  } catch {
+    return {
+      status: 'inconclusive',
+      url,
+    }
+  }
+}
+
+function getRdapRegistrationDate(data: RdapDomainResponse) {
+  const events = data.events ?? []
+
+  return (
+    getEarliestRdapEventDate(events, 'registration') ??
+    getEarliestRdapEventDate(events, 'reregistration')
+  )
+}
+
+function getEarliestRdapEventDate(
+  events: NonNullable<RdapDomainResponse['events']>,
+  eventAction: string,
+) {
+  let earliest: { timestamp: number; date: string } | null = null
+
+  for (const event of events) {
+    if (event.eventAction?.toLowerCase() !== eventAction || !event.eventDate) {
+      continue
+    }
+
+    const timestamp = new Date(event.eventDate).getTime()
+
+    if (!Number.isFinite(timestamp)) {
+      continue
+    }
+
+    if (!earliest || timestamp < earliest.timestamp) {
+      earliest = {
+        timestamp,
+        date: event.eventDate,
+      }
+    }
+  }
+
+  return earliest?.date ?? null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
 }
 
 export async function collectThreatListEvidence(
@@ -863,7 +1074,7 @@ export async function collectWebRiskEvidence(
         url: 'https://cloud.google.com/web-risk',
         snippet:
           'Google Web Risk uris:search returned no threat match for this URI on the requested lists: malware, social engineering, unwanted software, and social engineering extended coverage.',
-        sentiment: 'neutral',
+        sentiment: 'positive',
         weight: 1,
         observedAt,
       },
@@ -909,6 +1120,7 @@ export async function collectTavilyEvidence(
 
     return (response.value.results ?? [])
       .filter((result) => typeof result.score !== 'number' || result.score >= 0.5)
+      .filter((result) => tavilyResultMatchesHostname(result, hostname))
       .slice(0, 4)
       .map((result) => tavilyResultToEvidence(result, observedAt))
   })
@@ -1027,6 +1239,83 @@ export function tavilyResultToEvidence(result: TavilyResult, observedAt: string)
     sentiment: hasStrongNegativeTerm || hasNegativeTerm ? 'negative' : hasPositiveTerm ? 'positive' : 'neutral',
     weight: hasStrongNegativeTerm ? 7 : hasNegativeTerm ? 1 : hasPositiveTerm ? 2 : 2,
     observedAt,
+  }
+}
+
+function tavilyResultMatchesHostname(result: TavilyResult, hostname: string) {
+  const normalizedHostname = hostname.toLowerCase()
+  const searchableText = [result.title, result.content].filter(Boolean).join(' ')
+
+  if (containsExactHostnameToken(searchableText, normalizedHostname)) {
+    return true
+  }
+
+  if (!result.url) {
+    return false
+  }
+
+  try {
+    const url = new URL(result.url)
+
+    if (url.hostname.toLowerCase() === normalizedHostname) {
+      return true
+    }
+
+    return containsExactHostnameToken(
+      decodeUrlText(`${url.pathname} ${url.search} ${url.hash}`),
+      normalizedHostname,
+    )
+  } catch {
+    return containsExactHostnameToken(result.url, normalizedHostname)
+  }
+}
+
+function containsExactHostnameToken(text: string, hostname: string) {
+  const normalizedText = text.toLowerCase()
+  let index = normalizedText.indexOf(hostname)
+
+  while (index !== -1) {
+    const previous = normalizedText[index - 1]
+    const next = normalizedText[index + hostname.length]
+    const nextAfterDot = normalizedText[index + hostname.length + 1]
+
+    if (
+      !isHostnamePrefixCharacter(previous) &&
+      !isHostnameSuffixCharacter(next, nextAfterDot)
+    ) {
+      return true
+    }
+
+    index = normalizedText.indexOf(hostname, index + 1)
+  }
+
+  return false
+}
+
+function isHostnamePrefixCharacter(character: string | undefined) {
+  return Boolean(character && /[a-z0-9.-]/.test(character))
+}
+
+function isHostnameSuffixCharacter(
+  character: string | undefined,
+  nextCharacter: string | undefined,
+) {
+  if (!character) {
+    return false
+  }
+
+  if (/[a-z0-9-]/.test(character)) {
+    return true
+  }
+
+  return character === '.' && Boolean(nextCharacter && /[a-z0-9-]/.test(nextCharacter))
+}
+
+function decodeUrlText(text: string) {
+  try {
+    return decodeURIComponent(text)
+  } catch {
+    return text
   }
 }
 
