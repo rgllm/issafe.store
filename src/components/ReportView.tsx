@@ -5,12 +5,13 @@ import {
   Clock3,
   ExternalLink,
   Loader2,
+  Tag,
   ShieldAlert,
   ShieldCheck,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
-import type { Evidence, StoreSafetyReport } from '../types/report'
+import type { Coupon, Evidence, StoreSafetyReport } from '../types/report'
 
 const PROGRESS_STATUSES = new Set<StoreSafetyReport['status']>([
   'queued',
@@ -104,6 +105,8 @@ export function ReportView({
           </section>
 
           <aside className="p-5 sm:p-6">
+            <CouponList coupons={report.coupons ?? []} />
+
             <h2 className="m-0 text-sm font-semibold text-[var(--sea-ink)]">
               Before you buy
             </h2>
@@ -130,6 +133,65 @@ export function ReportView({
         </div>
       </section>
     </main>
+  )
+}
+
+function CouponList({ coupons }: { coupons: Coupon[] }) {
+  if (coupons.length === 0) {
+    return null
+  }
+
+  return (
+    <section className="mb-6 border-b border-[var(--line)] pb-6">
+      <div className="flex items-center gap-2">
+        <Tag className="size-4 text-[var(--primary)]" aria-hidden="true" />
+        <h2 className="m-0 text-sm font-semibold text-[var(--sea-ink)]">Coupons</h2>
+      </div>
+      <div className="mt-3 space-y-3">
+        {coupons.slice(0, 3).map((coupon, index) => (
+          <CouponCard key={`${coupon.title}-${index}`} coupon={coupon} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function CouponCard({ coupon }: { coupon: Coupon }) {
+  return (
+    <article className="rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-xs font-medium text-[var(--sea-ink-soft)]">
+            Unverified public offer
+          </p>
+          <h3 className="m-0 mt-1 text-sm font-semibold leading-5 text-[var(--sea-ink)]">
+            {coupon.title}
+          </h3>
+        </div>
+        {coupon.code ? (
+          <span className="inline-flex max-w-[9rem] flex-none rounded-md border border-[var(--line-strong)] bg-[var(--surface)] px-2 py-1 font-mono text-xs font-semibold text-[var(--sea-ink)]">
+            <span className="truncate">{coupon.code}</span>
+          </span>
+        ) : null}
+      </div>
+      <p className="m-0 mt-2 line-clamp-3 text-sm leading-6 text-[var(--sea-ink-soft)]">
+        {coupon.description}
+      </p>
+      <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs text-[var(--sea-ink-soft)]">
+        <span>{coupon.source}</span>
+        {coupon.url ? (
+          <a
+            href={coupon.url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 font-medium no-underline"
+          >
+            Source
+            <ExternalLink className="size-3" aria-hidden="true" />
+          </a>
+        ) : null}
+      </div>
+    </article>
   )
 }
 

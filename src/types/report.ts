@@ -10,6 +10,15 @@ export type Evidence = {
   observedAt: string
 }
 
+export type Coupon = {
+  title: string
+  description: string
+  code?: string
+  url?: string
+  source: string
+  observedAt: string
+}
+
 export type StoreSafetyReport = {
   id: string
   inputUrl: string
@@ -21,6 +30,7 @@ export type StoreSafetyReport = {
   recommendation: Recommendation
   summary: string
   evidence: Evidence[]
+  coupons: Coupon[]
   createdAt: string
   expiresAt: string
 }

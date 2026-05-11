@@ -68,6 +68,7 @@ export class StoreSafetyAgent extends Agent<Env, StoreSafetyState> {
             status,
             summary,
             evidence: current.evidence,
+            coupons: current.coupons,
           },
           updatedAt: new Date().toISOString(),
         })
@@ -116,6 +117,7 @@ function createBaseReport(
     recommendation: 'unknown',
     summary,
     evidence: [],
+    coupons: [],
     createdAt,
     expiresAt,
   }

@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  buildTavilyCouponQueries,
   buildTavilyQueries,
   classifyEvidenceFactors,
   clearRdapBootstrapCacheForTests,
   collectOpenPhishEvidence,
   collectRdapEvidence,
   collectSiteEvidence,
+  collectTavilyCoupons,
   collectTavilyEvidence,
   collectUrlhausEvidence,
   collectWebRiskEvidence,
   getCacheTtlSeconds,
+  tavilyResultToCoupon,
   tavilyResultToEvidence,
 } from './research'
 import type { Evidence, StoreSafetyRequest } from '../types/report'
@@ -102,6 +105,16 @@ describe('buildTavilyQueries', () => {
         query: '"example.com"',
         includeDomains: ['trustpilot.com', 'reddit.com', 'bbb.org', 'scamadviser.com'],
       },
+    ])
+  })
+})
+
+describe('buildTavilyCouponQueries', () => {
+  it('builds coupon-focused queries for a hostname', () => {
+    expect(buildTavilyCouponQueries('example.com')).toEqual([
+      { query: '"example.com" coupon code' },
+      { query: '"example.com" promo code' },
+      { query: '"example.com" discount code' },
     ])
   })
 })
@@ -700,6 +713,109 @@ describe('Tavily evidence mapping', () => {
         sourceType: 'technical',
       }),
     ])
+  })
+})
+
+describe('Tavily coupon mapping', () => {
+  it('extracts coupon codes from Tavily snippets', () => {
+    const coupon = tavilyResultToCoupon(
+      {
+        title: 'Example.com coupon code',
+        content: 'Use code SAVE20 for 20% off at example.com.',
+        url: 'https://coupons.example/example.com',
+        score: 0.8,
+      },
+      observedAt,
+    )
+
+    expect(coupon).toEqual({
+      title: 'Example.com coupon code',
+      description: 'Use code SAVE20 for 20% off at example.com.',
+      code: 'SAVE20',
+      url: 'https://coupons.example/example.com',
+      source: 'coupons.example',
+      observedAt,
+    })
+  })
+
+  it('keeps valid coupon offers without visible codes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            results: [
+              {
+                title: 'Example.com discount offer',
+                content: 'Current discount offers are available for example.com shoppers.',
+                url: 'https://deals.example/example.com',
+                score: 0.8,
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    const coupons = await collectTavilyCoupons('example.com', {
+      TAVILY_API_KEY: 'test-key',
+    })
+
+    expect(coupons).toEqual([
+      expect.objectContaining({
+        title: 'Example.com discount offer',
+        description: 'Current discount offers are available for example.com shoppers.',
+        source: 'deals.example',
+      }),
+    ])
+    expect(coupons[0]).not.toHaveProperty('code')
+  })
+
+  it('filters low-relevance or hostname-mismatched coupon results', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({
+            results: [
+              {
+                title: 'Low relevance example.com coupon',
+                content: 'Use code SAVE10 at example.com.',
+                url: 'https://deals.example/example.com',
+                score: 0.49,
+              },
+              {
+                title: 'Wrong store coupon',
+                content: 'Use code SAVE10 at other-store.com.',
+                url: 'https://deals.example/other-store.com',
+                score: 0.9,
+              },
+              {
+                title: 'Useful example.com promo code',
+                content: 'Use code SAVE15 at example.com.',
+                url: 'https://deals.example/example.com-save15',
+                score: 0.9,
+              },
+            ],
+          }),
+        ),
+      ),
+    )
+
+    const coupons = await collectTavilyCoupons('example.com', {
+      TAVILY_API_KEY: 'test-key',
+    })
+
+    expect(coupons).toEqual([
+      expect.objectContaining({
+        title: 'Useful example.com promo code',
+        code: 'SAVE15',
+      }),
+    ])
+  })
+
+  it('returns no coupons when Tavily is not configured', async () => {
+    await expect(collectTavilyCoupons('example.com', {})).resolves.toEqual([])
   })
 })
 

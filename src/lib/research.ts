@@ -1,7 +1,12 @@
 import { getDomain } from 'tldts'
 import { dedupeEvidence, scoreEvidence } from './scoring'
 import type { RiskFactor, RiskFactorKey } from './scoring'
-import type { Evidence, StoreSafetyReport, StoreSafetyRequest } from '../types/report'
+import type {
+  Coupon,
+  Evidence,
+  StoreSafetyReport,
+  StoreSafetyRequest,
+} from '../types/report'
 
 type ResearchEnv = {
   AI?: Ai
@@ -161,6 +166,17 @@ const POSITIVE_TERMS = [
   'return policy',
 ]
 
+const COUPON_TERMS = [
+  'coupon',
+  'promo',
+  'promotion',
+  'discount',
+  'voucher',
+  'offer',
+  'deal',
+  'sale',
+]
+
 /** `threatTypes` query values for `uris:search` (excludes THREAT_TYPE_UNSPECIFIED per API semantics). */
 const WEB_RISK_THREAT_TYPES = [
   'MALWARE',
@@ -213,7 +229,10 @@ export async function runStoreResearch(
   const threatEvidence = await collectThreatListEvidence(request, env)
   reportProgress?.('researching', 'Searching for external reputation signals.')
 
-  const searchEvidence = await collectTavilyEvidence(request.hostname, env)
+  const [searchEvidence, coupons] = await Promise.all([
+    collectTavilyEvidence(request.hostname, env),
+    collectTavilyCoupons(request.hostname, env),
+  ])
   const evidence = dedupeEvidence([
     ...siteEvidence,
     ...rdapEvidence,
@@ -238,6 +257,7 @@ export async function runStoreResearch(
     recommendation: score.recommendation,
     summary,
     evidence,
+    coupons,
     createdAt,
     expiresAt,
   }
@@ -1144,6 +1164,43 @@ export function buildTavilyQueries(hostname: string): TavilyQuery[] {
   ]
 }
 
+export async function collectTavilyCoupons(
+  hostname: string,
+  env: Pick<ResearchEnv, 'TAVILY_API_KEY'>,
+): Promise<Coupon[]> {
+  const observedAt = new Date().toISOString()
+
+  if (!env.TAVILY_API_KEY) {
+    return []
+  }
+
+  const queries = buildTavilyCouponQueries(hostname)
+  const responses = await Promise.allSettled(
+    queries.map((query) => searchTavily(query, env.TAVILY_API_KEY ?? '')),
+  )
+  const coupons = responses.flatMap((response) => {
+    if (response.status === 'rejected') {
+      return []
+    }
+
+    return (response.value.results ?? [])
+      .filter((result) => typeof result.score !== 'number' || result.score >= 0.5)
+      .filter((result) => tavilyResultMatchesHostname(result, hostname))
+      .filter(tavilyResultMentionsCoupon)
+      .map((result) => tavilyResultToCoupon(result, observedAt))
+  })
+
+  return dedupeCoupons(coupons).slice(0, 3)
+}
+
+export function buildTavilyCouponQueries(hostname: string): TavilyQuery[] {
+  return [
+    { query: `"${hostname}" coupon code` },
+    { query: `"${hostname}" promo code` },
+    { query: `"${hostname}" discount code` },
+  ]
+}
+
 export async function classifyEvidenceFactors(
   request: StoreSafetyRequest,
   evidence: Evidence[],
@@ -1242,6 +1299,25 @@ export function tavilyResultToEvidence(result: TavilyResult, observedAt: string)
   }
 }
 
+export function tavilyResultToCoupon(
+  result: TavilyResult,
+  observedAt: string,
+): Coupon {
+  const title = result.title?.trim() || 'Public coupon offer'
+  const description = (result.content ?? result.url ?? 'Public coupon offer.').trim()
+  const url = result.url
+  const code = extractCouponCode(`${title} ${description}`)
+
+  return {
+    title,
+    description,
+    ...(code ? { code } : {}),
+    ...(url ? { url } : {}),
+    source: getCouponSource(url),
+    observedAt,
+  }
+}
+
 function tavilyResultMatchesHostname(result: TavilyResult, hostname: string) {
   const normalizedHostname = hostname.toLowerCase()
   const searchableText = [result.title, result.content].filter(Boolean).join(' ')
@@ -1323,6 +1399,68 @@ function isScamQuestionResult(text: string) {
   return /\b(is|are|was|were)\b.{0,80}\b(legit|safe|scam|fraud|real|trustworthy)\b/.test(
     text,
   )
+}
+
+function tavilyResultMentionsCoupon(result: TavilyResult) {
+  const haystack = [result.title, result.content, result.url]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  return COUPON_TERMS.some((term) => haystack.includes(term))
+}
+
+function extractCouponCode(text: string) {
+  const normalized = text.replace(/[“”]/g, '"').replace(/[‘’]/g, "'")
+  const patterns = [
+    /\b(?:code|coupon code|promo code|voucher code)\s*(?:is|:|-)?\s*["']?([A-Z0-9][A-Z0-9_-]{3,24})["']?/i,
+    /\buse\s+(?:code\s+)?["']?([A-Z0-9][A-Z0-9_-]{3,24})["']?/i,
+  ]
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern)
+    const code = match?.[1]?.toUpperCase()
+
+    if (code && !isGenericCouponCode(code)) {
+      return code
+    }
+  }
+
+  return undefined
+}
+
+function isGenericCouponCode(code: string) {
+  return /^(CODE|COUPON|PROMO|VOUCHER|DISCOUNT|OFFER|DEAL|SALE)$/i.test(code)
+}
+
+function getCouponSource(url: string | undefined) {
+  if (!url) {
+    return 'Public search result'
+  }
+
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return 'Public search result'
+  }
+}
+
+function dedupeCoupons(coupons: Coupon[]) {
+  const seen = new Set<string>()
+  const deduped: Coupon[] = []
+
+  for (const coupon of coupons) {
+    const key = `${coupon.code ?? ''}:${coupon.url ?? ''}:${coupon.title}`.toLowerCase()
+
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    deduped.push(coupon)
+  }
+
+  return deduped
 }
 
 async function summarizeReport(
