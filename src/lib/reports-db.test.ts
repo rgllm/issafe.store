@@ -3,6 +3,7 @@ import { getCachedReport, saveReport } from './reports-db'
 import type { StoreSafetyReport } from '../types/report'
 
 type StoredRow = {
+  hostname: string
   report_json: string
   expires_at: string
 }
@@ -20,9 +21,10 @@ class FakeD1Statement {
 
   async run() {
     if (this.sql.includes('INSERT INTO reports')) {
-      const [id, , , reportJson, , expiresAt] = this.params
+      const [id, hostname, , reportJson, , expiresAt] = this.params
 
       this.rows.set(String(id), {
+        hostname: String(hostname),
         report_json: String(reportJson),
         expires_at: String(expiresAt),
       })
@@ -82,5 +84,22 @@ describe('reports D1 cache', () => {
     await expect(
       getCachedReport(db as unknown as D1Database, report.id, new Date('2026-05-04T12:00:00.000Z')),
     ).resolves.toBeNull()
+  })
+
+  it('normalizes the persisted hostname to the registrable domain', async () => {
+    const db = new FakeD1Database()
+    const report = {
+      ...createReport('2026-05-05T00:00:00.000Z'),
+      hostname: 'www.zara.com',
+    }
+
+    await saveReport(db as unknown as D1Database, report)
+
+    const row = db.rows.get(report.id)
+
+    expect(row?.hostname).toBe('zara.com')
+    expect(JSON.parse(row?.report_json ?? '{}')).toMatchObject({
+      hostname: 'zara.com',
+    })
   })
 })

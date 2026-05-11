@@ -1,4 +1,5 @@
 import type { StoreSafetyReport } from '../types/report'
+import { getRegistrableHostname } from './url'
 
 type ReportRow = {
   report_json: string
@@ -49,6 +50,11 @@ export async function getCachedReport(
 export async function saveReport(db: D1Database, report: StoreSafetyReport) {
   await ensureReportsTable(db)
 
+  const storedReport = {
+    ...report,
+    hostname: getRegistrableHostname(report.hostname),
+  }
+
   await db
     .prepare(
       `INSERT INTO reports (
@@ -67,12 +73,12 @@ export async function saveReport(db: D1Database, report: StoreSafetyReport) {
         expires_at = excluded.expires_at`,
     )
     .bind(
-      report.id,
-      report.hostname,
-      report.normalizedUrl,
-      JSON.stringify(report),
-      report.createdAt,
-      report.expiresAt,
+      storedReport.id,
+      storedReport.hostname,
+      storedReport.normalizedUrl,
+      JSON.stringify(storedReport),
+      storedReport.createdAt,
+      storedReport.expiresAt,
     )
     .run()
 }

@@ -1,3 +1,5 @@
+import { getDomain } from 'tldts'
+
 export type NormalizedStoreUrl = {
   inputUrl: string
   normalizedUrl: string
@@ -43,16 +45,18 @@ export function normalizeStoreUrl(input: string): NormalizedStoreUrl {
     throw new UrlValidationError('URLs with usernames or passwords are not supported.')
   }
 
-  const hostname = parsed.hostname.toLowerCase()
+  const submittedHostname = parsed.hostname.toLowerCase()
 
-  if (!isPublicHostname(hostname)) {
+  if (!isPublicHostname(submittedHostname)) {
     throw new UrlValidationError('Enter a public store domain.')
   }
+
+  const hostname = getRegistrableHostname(submittedHostname)
 
   parsed.hash = ''
   parsed.search = ''
   parsed.pathname = '/'
-  parsed.hostname = hostname
+  parsed.hostname = submittedHostname
 
   if (
     (parsed.protocol === 'https:' && parsed.port === '443') ||
@@ -76,6 +80,12 @@ export async function createCheckId(hostname: string) {
     .join('')
 
   return `store-${hash.slice(0, 20)}`
+}
+
+export function getRegistrableHostname(hostname: string) {
+  const normalizedHostname = hostname.trim().replace(/\.$/, '').toLowerCase()
+
+  return getDomain(normalizedHostname) ?? normalizedHostname
 }
 
 export function isPublicHostname(hostname: string) {

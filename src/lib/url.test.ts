@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { createCheckId, normalizeStoreUrl, UrlValidationError } from './url'
+import {
+  createCheckId,
+  getRegistrableHostname,
+  normalizeStoreUrl,
+  UrlValidationError,
+} from './url'
 
 describe('normalizeStoreUrl', () => {
   it('normalizes a store hostname to a clean HTTPS origin', () => {
@@ -8,6 +13,24 @@ describe('normalizeStoreUrl', () => {
       normalizedUrl: 'https://example-store.com/',
       hostname: 'example-store.com',
     })
+  })
+
+  it('stores only the registrable domain as the hostname', () => {
+    expect(normalizeStoreUrl('www.zara.com/2424')).toEqual({
+      inputUrl: 'www.zara.com/2424',
+      normalizedUrl: 'https://www.zara.com/',
+      hostname: 'zara.com',
+    })
+
+    expect(normalizeStoreUrl('https://test.zara.com/products?utm=ad')).toEqual({
+      inputUrl: 'https://test.zara.com/products?utm=ad',
+      normalizedUrl: 'https://test.zara.com/',
+      hostname: 'zara.com',
+    })
+  })
+
+  it('keeps compound public suffixes with the registrable domain', () => {
+    expect(getRegistrableHostname('shop.example.co.uk')).toBe('example.co.uk')
   })
 
   it('rejects local, private, direct IP, and single-label hosts', () => {
