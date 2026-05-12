@@ -251,35 +251,6 @@ pre code {
   }
 }
 
-.meter-indeterminate {
-  position: relative;
-}
-
-.meter-indeterminate-bar {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 42%;
-  border-radius: 9999px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in oklab, var(--primary) 0%, transparent),
-    color-mix(in oklab, var(--primary) 65%, var(--foreground)),
-    color-mix(in oklab, var(--primary) 0%, transparent)
-  );
-  animation: meter-indeterminate-slide 1.35s ease-in-out infinite;
-}
-
-@keyframes meter-indeterminate-slide {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(340%);
-  }
-}
-
 .skeleton-shimmer {
   background: linear-gradient(
     110deg,

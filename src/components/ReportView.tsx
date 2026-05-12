@@ -104,22 +104,14 @@ export function ReportView({
             />
           </div>
 
-          {isWorking ? (
-            <div
-              className="meter-indeterminate mt-5 h-2 overflow-hidden rounded-full bg-[var(--meter-bg)]"
-              role="progressbar"
-              aria-valuetext="Analysis in progress"
-            >
-              <div className="meter-indeterminate-bar" />
-            </div>
-          ) : (
+          {!isWorking ? (
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--meter-bg)]">
               <div
                 className="h-full rounded-full transition-[width] duration-500 ease-out"
                 style={{ width: progressWidth, background: verdict.color }}
               />
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="grid gap-0 lg:grid-cols-[minmax(0,0.68fr)_minmax(320px,0.32fr)]">
