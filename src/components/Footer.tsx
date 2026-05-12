@@ -1,3 +1,4 @@
+import { Github } from 'lucide-react'
 import { BrandLogo } from './BrandLogo'
 
 export default function Footer() {
@@ -8,17 +9,28 @@ export default function Footer() {
         <span className="text-center text-pretty">
           Public-signal risk assessment only. Does not guarantee merchant, purchase, or delivery safety.
         </span>
-        <span>
-          Made by{' '}
+        <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
           <a
-            href="https://rgllm.com"
+            href="https://github.com/rgllm/issafe.store"
             target="_blank"
             rel="noreferrer"
-            className="font-medium text-foreground no-underline hover:text-primary"
+            className="inline-flex items-center gap-1 font-medium text-foreground no-underline hover:text-primary"
           >
-            rgllm
+            <Github className="size-3.5 shrink-0" aria-hidden />
+            GitHub
           </a>
-        </span>
+          <span>
+            Made by{' '}
+            <a
+              href="https://rgllm.com"
+              target="_blank"
+              rel="noreferrer"
+              className="font-medium text-foreground no-underline hover:text-primary"
+            >
+              rgllm
+            </a>
+          </span>
+        </div>
       </div>
     </footer>
   )
