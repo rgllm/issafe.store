@@ -237,3 +237,65 @@ pre code {
     transform: translateY(0);
   }
 }
+
+.report-summary-live {
+  animation: report-summary-fade 280ms ease-out both;
+}
+
+@keyframes report-summary-fade {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.meter-indeterminate {
+  position: relative;
+}
+
+.meter-indeterminate-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 42%;
+  border-radius: 9999px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--primary) 0%, transparent),
+    color-mix(in oklab, var(--primary) 65%, var(--foreground)),
+    color-mix(in oklab, var(--primary) 0%, transparent)
+  );
+  animation: meter-indeterminate-slide 1.35s ease-in-out infinite;
+}
+
+@keyframes meter-indeterminate-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(340%);
+  }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    110deg,
+    var(--muted) 0%,
+    color-mix(in oklab, var(--foreground) 8%, var(--muted)) 45%,
+    var(--muted) 90%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer-move 1.25s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer-move {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}

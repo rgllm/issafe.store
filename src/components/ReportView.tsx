@@ -1,16 +1,21 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  Bot,
   CheckCircle2,
   Clock3,
+  DatabaseZap,
   ExternalLink,
+  Globe,
   Loader2,
-  Tag,
   ShieldAlert,
+  Star,
   ShieldCheck,
+  Tag,
 } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 import type { LucideIcon } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import type { Coupon, Evidence, StoreSafetyReport } from '../types/report'
 
 const PROGRESS_STATUSES = new Set<StoreSafetyReport['status']>([
@@ -18,6 +23,14 @@ const PROGRESS_STATUSES = new Set<StoreSafetyReport['status']>([
   'researching',
   'scoring',
 ])
+
+const PIPELINE_PHASES = [
+  { step: 1, Icon: DatabaseZap, label: 'Store site & SSL signals' },
+  { step: 2, Icon: Globe, label: 'Domain registration (RDAP)' },
+  { step: 3, Icon: ShieldAlert, label: 'Threat lists & blocklists' },
+  { step: 4, Icon: Star, label: 'External reputation search' },
+  { step: 5, Icon: Bot, label: 'AI synthesis & summary' },
+] as const
 
 export function isReportInProgress(status: StoreSafetyReport['status']) {
   return PROGRESS_STATUSES.has(status)
@@ -74,34 +87,57 @@ export function ReportView({
           </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <Metric label="Score" value={`${report.score}/100`} />
-            <Metric label="Confidence" value={`${report.confidence}/100`} />
-            <Metric label="Recommendation" value={verdict.label} />
-          </div>
-
-          <div className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--meter-bg)]">
-            <div
-              className="h-full rounded-full"
-              style={{ width: progressWidth, background: verdict.color }}
+            <Metric
+              label="Score"
+              value={isWorking ? '—' : `${report.score}/100`}
+              muted={isWorking}
+            />
+            <Metric
+              label="Confidence"
+              value={isWorking ? '—' : `${report.confidence}/100`}
+              muted={isWorking}
+            />
+            <Metric
+              label="Recommendation"
+              value={isWorking ? 'Pending' : verdict.label}
+              muted={isWorking}
             />
           </div>
+
+          {isWorking ? (
+            <div
+              className="meter-indeterminate mt-5 h-2 overflow-hidden rounded-full bg-[var(--meter-bg)]"
+              role="progressbar"
+              aria-valuetext="Analysis in progress"
+            >
+              <div className="meter-indeterminate-bar" />
+            </div>
+          ) : (
+            <div className="mt-5 h-2 overflow-hidden rounded-full bg-[var(--meter-bg)]">
+              <div
+                className="h-full rounded-full transition-[width] duration-500 ease-out"
+                style={{ width: progressWidth, background: verdict.color }}
+              />
+            </div>
+          )}
         </div>
 
         <div className="grid gap-0 lg:grid-cols-[minmax(0,0.68fr)_minmax(320px,0.32fr)]">
           <section className="border-b border-[var(--line)] p-5 sm:p-6 lg:border-b-0 lg:border-r">
             <h2 className="m-0 text-sm font-semibold text-[var(--sea-ink)]">Summary</h2>
-            <p className="m-0 mt-3 text-sm leading-6 text-[var(--sea-ink-soft)]">
-              {report.summary}
-            </p>
 
             {isWorking ? (
-              <div className="mt-5 flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2 text-sm font-medium text-[var(--sea-ink)]">
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                Collecting fresh evidence...
-              </div>
-            ) : null}
+              <>
+                <LiveActivityStrip report={report} />
+                <ProgressChecklist report={report} />
+              </>
+            ) : (
+              <p className="m-0 mt-3 text-sm leading-6 text-[var(--sea-ink-soft)]">
+                {report.summary}
+              </p>
+            )}
 
-            <EvidenceList evidence={report.evidence} />
+            <EvidenceList evidence={report.evidence} isWorking={isWorking} />
           </section>
 
           <aside className="p-5 sm:p-6">
@@ -133,6 +169,139 @@ export function ReportView({
         </div>
       </section>
     </main>
+  )
+}
+
+function LiveActivityStrip({ report }: { report: StoreSafetyReport }) {
+  const phase = formatPipelinePhase(report.status)
+
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3 sm:p-4">
+      <div className="flex flex-wrap items-center gap-2 gap-y-1">
+        <span className="rounded-md border border-[var(--line)] bg-[var(--surface)] px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-[var(--sea-ink-soft)]">
+          {phase}
+        </span>
+        <ElapsedSeconds startedAt={report.createdAt} active />
+        <Loader2
+          className="size-4 shrink-0 animate-spin text-[var(--primary)]"
+          aria-hidden="true"
+        />
+      </div>
+      <p
+        key={report.summary}
+        className="report-summary-live m-0 mt-2 text-sm font-medium leading-6 text-[var(--sea-ink)]"
+      >
+        {report.summary}
+      </p>
+    </div>
+  )
+}
+
+function formatPipelinePhase(status: StoreSafetyReport['status']) {
+  if (status === 'queued') {
+    return 'Queued'
+  }
+  if (status === 'researching') {
+    return 'Research'
+  }
+  if (status === 'scoring') {
+    return 'Scoring'
+  }
+  return 'Progress'
+}
+
+function ElapsedSeconds({
+  startedAt,
+  active,
+}: {
+  startedAt: string
+  active: boolean
+}) {
+  const [seconds, setSeconds] = useState(0)
+
+  useEffect(() => {
+    if (!active) {
+      return
+    }
+    const start = Date.parse(startedAt)
+    if (Number.isNaN(start)) {
+      return
+    }
+
+    const tick = () => {
+      setSeconds(Math.max(0, Math.floor((Date.now() - start) / 1000)))
+    }
+    tick()
+    const id = window.setInterval(tick, 1000)
+    return () => window.clearInterval(id)
+  }, [startedAt, active])
+
+  if (!active) {
+    return null
+  }
+
+  return (
+    <span className="text-xs font-medium text-[var(--sea-ink-soft)]">
+      Running {seconds}s
+    </span>
+  )
+}
+
+function ProgressChecklist({ report }: { report: StoreSafetyReport }) {
+  const ps = report.progressStep ?? 0
+
+  return (
+    <div className="mt-5">
+      <h3 className="m-0 text-xs font-semibold uppercase tracking-wide text-[var(--sea-ink-soft)]">
+        Checks in progress
+      </h3>
+      <ul className="m-0 mt-3 list-none space-y-2.5 p-0">
+        {PIPELINE_PHASES.map((phase, index) => {
+          const isLast = index === PIPELINE_PHASES.length - 1
+          const done = isLast
+            ? report.status === 'complete'
+            : ps > phase.step
+          const active = isLast
+            ? isReportInProgress(report.status) && ps >= 5
+            : ps === phase.step
+          const PhaseIcon = phase.Icon
+
+          return (
+            <li key={phase.label} className="flex items-start gap-2.5 text-sm">
+              <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+                {done ? (
+                  <CheckCircle2
+                    className="size-4 text-[var(--signal-safe)]"
+                    aria-hidden="true"
+                  />
+                ) : active ? (
+                  <Loader2
+                    className="size-4 animate-spin text-[var(--primary)]"
+                    aria-hidden="true"
+                  />
+                ) : (
+                  <PhaseIcon
+                    className="size-4 text-[var(--sea-ink-soft)] opacity-50"
+                    aria-hidden="true"
+                  />
+                )}
+              </span>
+              <span
+                className={
+                  active
+                    ? 'font-medium text-[var(--sea-ink)]'
+                    : done
+                      ? 'text-[var(--sea-ink-soft)]'
+                      : 'text-[var(--sea-ink-soft)]'
+                }
+              >
+                {phase.label}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
   )
 }
 
@@ -195,16 +364,47 @@ function CouponCard({ coupon }: { coupon: Coupon }) {
   )
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({
+  label,
+  value,
+  muted,
+}: {
+  label: string
+  value: string
+  muted?: boolean
+}) {
   return (
     <div className="rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] p-3">
       <p className="m-0 text-xs font-medium text-[var(--sea-ink-soft)]">{label}</p>
-      <p className="m-0 mt-1 text-lg font-semibold text-[var(--sea-ink)]">{value}</p>
+      <p
+        className={`m-0 mt-1 text-lg font-semibold ${muted ? 'text-[var(--sea-ink-soft)]' : 'text-[var(--sea-ink)]'}`}
+      >
+        {value}
+      </p>
     </div>
   )
 }
 
-function EvidenceList({ evidence }: { evidence: Evidence[] }) {
+function EvidenceList({
+  evidence,
+  isWorking,
+}: {
+  evidence: Evidence[]
+  isWorking: boolean
+}) {
+  if (isWorking && evidence.length === 0) {
+    return (
+      <div className="mt-7">
+        <h2 className="m-0 text-sm font-semibold text-[var(--sea-ink)]">Evidence</h2>
+        <div className="mt-3 space-y-3">
+          <EvidenceSkeletonRow />
+          <EvidenceSkeletonRow />
+          <EvidenceSkeletonRow />
+        </div>
+      </div>
+    )
+  }
+
   if (evidence.length === 0) {
     return (
       <div className="mt-6 rounded-lg border border-dashed border-[var(--line)] bg-[var(--surface-muted)] p-4 text-sm text-[var(--sea-ink-soft)]">
@@ -221,6 +421,20 @@ function EvidenceList({ evidence }: { evidence: Evidence[] }) {
           <EvidenceRow key={`${item.title}-${index}`} evidence={item} />
         ))}
       </div>
+    </div>
+  )
+}
+
+function EvidenceSkeletonRow() {
+  return (
+    <div
+      className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-4"
+      aria-hidden="true"
+    >
+      <div className="skeleton-shimmer h-3 w-24 rounded" />
+      <div className="skeleton-shimmer mt-3 h-4 w-[88%] max-w-md rounded" />
+      <div className="skeleton-shimmer mt-2 h-4 w-[72%] max-w-sm rounded" />
+      <div className="skeleton-shimmer mt-4 h-3 w-16 rounded" />
     </div>
   )
 }

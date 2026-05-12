@@ -264,23 +264,31 @@ export function clearRdapBootstrapCacheForTests() {
 export async function runStoreResearch(
   request: StoreSafetyRequest,
   env: ResearchEnv,
-  reportProgress?: (status: StoreSafetyReport['status'], summary: string) => void,
+  reportProgress?: (
+    status: StoreSafetyReport['status'],
+    summary: string,
+    progressStep: number,
+  ) => void,
 ): Promise<StoreSafetyReport> {
   const createdAt = new Date().toISOString()
   const expiresAt = new Date(
     Date.now() + getCacheTtlSeconds(env) * 1000,
   ).toISOString()
 
-  reportProgress?.('researching', 'Checking the store site and public signals.')
+  reportProgress?.(
+    'researching',
+    'Checking the store site and public signals.',
+    1,
+  )
 
   const siteEvidence = await collectSiteEvidence(request.normalizedUrl)
-  reportProgress?.('researching', 'Checking domain registration data.')
+  reportProgress?.('researching', 'Checking domain registration data.', 2)
 
   const rdapEvidence = await collectRdapEvidence(request.hostname)
-  reportProgress?.('researching', 'Checking public threat-list signals.')
+  reportProgress?.('researching', 'Checking public threat-list signals.', 3)
 
   const threatEvidence = await collectThreatListEvidence(request, env)
-  reportProgress?.('researching', 'Searching for external reputation signals.')
+  reportProgress?.('researching', 'Searching for external reputation signals.', 4)
 
   const [searchEvidence, coupons] = await Promise.all([
     collectTavilyEvidence(request.hostname, env),
@@ -293,12 +301,20 @@ export async function runStoreResearch(
     ...searchEvidence,
   ])
 
-  reportProgress?.('scoring', 'Classifying evidence and calculating the risk score.')
+  reportProgress?.(
+    'scoring',
+    'Classifying evidence and calculating the risk score.',
+    5,
+  )
 
   const classifiedFactors = await classifyEvidenceFactors(request, evidence, env)
   const score = scoreEvidence(evidence, classifiedFactors)
 
-  reportProgress?.('scoring', 'Summarizing evidence and calculating the risk score.')
+  reportProgress?.(
+    'scoring',
+    'Summarizing evidence and calculating the risk score.',
+    6,
+  )
 
   const summary = await summarizeReport(request, evidence, score, env)
 

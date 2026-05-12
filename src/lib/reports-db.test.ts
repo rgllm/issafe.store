@@ -59,6 +59,7 @@ const createReport = (expiresAt: string): StoreSafetyReport => ({
   recommendation: 'likely-safe',
   summary: 'Public signals are positive.',
   evidence: [],
+  coupons: [],
   createdAt: '2026-05-04T00:00:00.000Z',
   expiresAt,
 })

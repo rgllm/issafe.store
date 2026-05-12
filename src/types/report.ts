@@ -25,6 +25,8 @@ export type StoreSafetyReport = {
   normalizedUrl: string
   hostname: string
   status: 'queued' | 'researching' | 'scoring' | 'complete' | 'failed'
+  /** Monotonic pipeline step while status is queued/researching/scoring; omitted when complete. */
+  progressStep?: number
   score: number
   confidence: number
   recommendation: Recommendation

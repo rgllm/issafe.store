@@ -199,13 +199,18 @@ function HomePage() {
             />
 
             {isSubmitting ? (
-              <p className="m-0 text-center text-sm text-muted-foreground">
-                Scanning public signals for{" "}
-                <span className="font-medium text-foreground">
-                  {url.trim()}
-                </span>
-                ...
-              </p>
+              <div className="flex flex-col gap-1 text-center">
+                <p className="m-0 text-sm text-muted-foreground">
+                  Starting checks for{" "}
+                  <span className="font-medium text-foreground">
+                    {url.trim()}
+                  </span>
+                  …
+                </p>
+                <p className="m-0 text-xs text-muted-foreground">
+                  Opening your live report — hang tight.
+                </p>
+              </div>
             ) : null}
 
             {error ? (

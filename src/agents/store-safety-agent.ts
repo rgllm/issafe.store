@@ -30,6 +30,7 @@ export class StoreSafetyAgent extends Agent<Env, StoreSafetyState> {
       'queued',
       'Store safety check queued.',
       this.env,
+      0,
     )
 
     this.setState({
@@ -53,20 +54,22 @@ export class StoreSafetyAgent extends Agent<Env, StoreSafetyState> {
         'researching',
         'Checking the store site, domain data, and external reputation signals.',
         this.env,
+        1,
       ),
       updatedAt: new Date().toISOString(),
     })
 
     try {
-      const report = await runStoreResearch(request, this.env, (status, summary) => {
+      const report = await runStoreResearch(request, this.env, (status, summary, progressStep) => {
         const current =
-          this.state.report ?? createBaseReport(request, status, summary, this.env)
+          this.state.report ?? createBaseReport(request, status, summary, this.env, progressStep)
 
         this.setState({
           report: {
             ...current,
             status,
             summary,
+            progressStep,
             evidence: current.evidence,
             coupons: current.coupons,
           },
@@ -103,6 +106,7 @@ function createBaseReport(
   status: StoreSafetyReport['status'],
   summary: string,
   env: Env,
+  progressStep?: number,
 ): StoreSafetyReport {
   const createdAt = new Date().toISOString()
   const expiresAt = new Date(
@@ -112,6 +116,7 @@ function createBaseReport(
   return {
     ...request,
     status,
+    ...(progressStep !== undefined ? { progressStep } : {}),
     score: 0,
     confidence: 0,
     recommendation: 'unknown',
