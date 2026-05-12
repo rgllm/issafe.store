@@ -12,6 +12,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
 import { TurnstileWidget } from "../components/TurnstileWidget";
+import { trackStoreEvent } from "../lib/umami";
 import type { StoreSafetyReport } from "../types/report";
 
 type CheckResponse = {
@@ -110,6 +111,8 @@ function HomePage() {
     setError(null);
     setIsSubmitting(true);
 
+    let checkFailureTracked = false;
+
     try {
       const response = await fetch("/api/check", {
         method: "POST",
@@ -124,6 +127,8 @@ function HomePage() {
       const body = (await response.json()) as CheckResponse | { error: string };
 
       if (!response.ok) {
+        trackStoreEvent("check_failed", { reason: "check_rejected" });
+        checkFailureTracked = true;
         throw new Error("error" in body ? body.error : "The check failed.");
       }
 
@@ -132,7 +137,11 @@ function HomePage() {
         to: "/report/$id",
         params: { id: result.report.id },
       });
+      trackStoreEvent("check_completed", { cached: result.cached });
     } catch (submitError) {
+      if (!checkFailureTracked) {
+        trackStoreEvent("check_failed", { reason: "client_error" });
+      }
       setError(
         submitError instanceof Error
           ? submitError.message
@@ -181,6 +190,7 @@ function HomePage() {
               <button
                 type="submit"
                 disabled={isSubmitting || !url.trim()}
+                data-umami-event="check_store_submit"
                 className="flex min-h-12 shrink-0 cursor-pointer items-center justify-center gap-2 rounded-md bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSubmitting ? (

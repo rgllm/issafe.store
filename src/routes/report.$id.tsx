@@ -1,7 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { AlertTriangle, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isReportInProgress, ReportView } from '../components/ReportView'
+import { trackStoreEvent } from '../lib/umami'
 import type { StoreSafetyReport } from '../types/report'
 
 type CheckResponse = {
@@ -20,6 +21,22 @@ function ReportPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const isInProgress = report ? isReportInProgress(report.status) : false
+  const viewedReportIdRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    viewedReportIdRef.current = null
+  }, [id])
+
+  useEffect(() => {
+    if (isLoading || !report) {
+      return
+    }
+    if (viewedReportIdRef.current === id) {
+      return
+    }
+    viewedReportIdRef.current = id
+    trackStoreEvent('report_viewed', { status: report.status, cached })
+  }, [cached, id, isLoading, report])
 
   useEffect(() => {
     let cancelled = false

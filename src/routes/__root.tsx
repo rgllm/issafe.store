@@ -3,6 +3,10 @@ import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
+import {
+  UMAMI_REPLAY_SAMPLE_RATE,
+  UMAMI_WEBSITE_ID,
+} from "../lib/umami";
 
 import appCss from "../styles.css?url";
 
@@ -105,6 +109,24 @@ export const Route = createRootRoute({
         href: "https://issafe.store/",
       },
     ],
+    scripts: import.meta.env.PROD
+      ? [
+          {
+            defer: true,
+            src: "https://cloud.umami.is/script.js",
+            "data-website-id": UMAMI_WEBSITE_ID,
+            "data-performance": "true",
+          },
+          {
+            defer: true,
+            src: "https://cloud.umami.is/recorder.js",
+            "data-website-id": UMAMI_WEBSITE_ID,
+            "data-sample-rate": UMAMI_REPLAY_SAMPLE_RATE,
+            "data-mask-level": "moderate",
+            "data-max-duration": "300000",
+          },
+        ]
+      : [],
   }),
   shellComponent: RootDocument,
 });

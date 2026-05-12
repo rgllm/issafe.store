@@ -1,3 +1,21 @@
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_UMAMI_WEBSITE_ID?: string
+  readonly VITE_UMAMI_REPLAY_SAMPLE_RATE?: string
+}
+
+type UmamiTracker = {
+  track: (
+    eventName: string,
+    data?: Record<string, string | number | boolean>,
+  ) => void
+}
+
+interface Window {
+  umami?: UmamiTracker
+}
+
 declare namespace Cloudflare {
   interface Env {
     CLOUDFLARE_ACCOUNT_ID?: string
