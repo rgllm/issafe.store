@@ -12,6 +12,9 @@ type ResearchEnv = {
   AI?: Ai
   AI_MODEL?: string
   CACHE_TTL_SECONDS?: string
+  CLOUDFLARE_ACCOUNT_ID?: string
+  CLOUDFLARE_URL_SCANNER_API_TOKEN?: string
+  CLOUDFLARE_URL_SCANNER_VISIBILITY?: string
   GOOGLE_WEB_RISK_API_KEY?: string
   TAVILY_API_KEY?: string
   URLHAUS_AUTH_KEY?: string
@@ -64,6 +67,49 @@ type WebRiskSearchUrisThreatUri = {
   threatTypes?: string[]
   /** RFC3339 — do not cache past this time (per API). */
   expireTime?: string
+}
+
+type CloudflareUrlScannerScanRequest = {
+  success?: boolean
+  result?: {
+    uuid?: string
+  }
+  errors?: Array<{ message?: string }>
+}
+
+type CloudflareUrlScannerResultResponse = {
+  success?: boolean
+  result?: {
+    task?: {
+      url?: string
+      visibility?: string
+      screenshotURL?: string
+      scanURL?: string
+      status?: string
+    }
+    page?: {
+      url?: string
+      finalURL?: string
+      domain?: string
+      asnname?: string
+      asn?: string | number
+      ip?: string
+      country?: string
+    }
+    verdicts?: {
+      overall?: {
+        malicious?: boolean
+        categories?: string[]
+      }
+      phishing?: string[]
+    }
+    meta?: {
+      processors?: {
+        tech?: string[]
+      }
+    }
+  }
+  errors?: Array<{ message?: string }>
 }
 
 type PolicyPage = {
@@ -199,6 +245,13 @@ const OPENPHISH_FEED_URL =
 const RDAP_BOOTSTRAP_URL = 'https://data.iana.org/rdap/dns.json'
 const RDAP_FALLBACK_BASE_URL = 'https://rdap.org/'
 const RDAP_FETCH_TIMEOUT_MS = 4500
+const CLOUDFLARE_URL_SCANNER_BASE_URL =
+  'https://api.cloudflare.com/client/v4/accounts'
+const CLOUDFLARE_URL_SCANNER_RESULTS_DOCS_URL =
+  'https://developers.cloudflare.com/radar/investigate/url-scanner/'
+const CLOUDFLARE_URL_SCANNER_DEFAULT_VISIBILITY = 'Unlisted'
+const CLOUDFLARE_URL_SCANNER_POLL_ATTEMPTS = 2
+const CLOUDFLARE_URL_SCANNER_POLL_DELAY_MS = 10_000
 
 let rdapBootstrapPromise: Promise<RdapBootstrap> | null = null
 
@@ -796,15 +849,149 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export async function collectThreatListEvidence(
   request: StoreSafetyRequest,
-  env: Pick<ResearchEnv, 'GOOGLE_WEB_RISK_API_KEY' | 'URLHAUS_AUTH_KEY'>,
+  env: Pick<
+    ResearchEnv,
+    | 'CLOUDFLARE_ACCOUNT_ID'
+    | 'CLOUDFLARE_URL_SCANNER_API_TOKEN'
+    | 'CLOUDFLARE_URL_SCANNER_VISIBILITY'
+    | 'GOOGLE_WEB_RISK_API_KEY'
+    | 'URLHAUS_AUTH_KEY'
+  >,
 ): Promise<Evidence[]> {
   const results = await Promise.allSettled([
     collectUrlhausEvidence(request.normalizedUrl, request.hostname, env),
     collectOpenPhishEvidence(request.normalizedUrl, request.hostname),
     collectWebRiskEvidence(request.normalizedUrl, env),
+    collectCloudflareUrlScannerEvidence(request, env),
   ])
 
   return results.flatMap((result) => (result.status === 'fulfilled' ? result.value : []))
+}
+
+export async function collectCloudflareUrlScannerEvidence(
+  request: StoreSafetyRequest,
+  env: Pick<
+    ResearchEnv,
+    | 'CLOUDFLARE_ACCOUNT_ID'
+    | 'CLOUDFLARE_URL_SCANNER_API_TOKEN'
+    | 'CLOUDFLARE_URL_SCANNER_VISIBILITY'
+  >,
+): Promise<Evidence[]> {
+  const observedAt = new Date().toISOString()
+  const accountId = env.CLOUDFLARE_ACCOUNT_ID?.trim()
+  const apiToken = env.CLOUDFLARE_URL_SCANNER_API_TOKEN?.trim()
+
+  if (!accountId || !apiToken) {
+    return [
+      {
+        sourceType: 'technical',
+        title: 'Cloudflare URL Scanner is not configured',
+        snippet:
+          'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_URL_SCANNER_API_TOKEN to include Cloudflare URL Scanner evidence.',
+        sentiment: 'neutral',
+        weight: 1,
+        observedAt,
+      },
+    ]
+  }
+
+  const visibility =
+    env.CLOUDFLARE_URL_SCANNER_VISIBILITY?.trim() || CLOUDFLARE_URL_SCANNER_DEFAULT_VISIBILITY
+
+  try {
+    const scanId = await createCloudflareUrlScannerScan(
+      request.normalizedUrl,
+      accountId,
+      apiToken,
+      visibility,
+    )
+
+    if (!scanId) {
+      return [
+        providerUnavailableEvidence(
+          'Cloudflare URL Scanner check unavailable',
+          observedAt,
+          'Cloudflare URL Scanner did not return a scan ID.',
+        ),
+      ]
+    }
+
+    const result = await pollCloudflareUrlScannerResult(scanId, accountId, apiToken)
+    const resultUrl = getCloudflareScannerResultUrl(result) ?? CLOUDFLARE_URL_SCANNER_RESULTS_DOCS_URL
+
+    if (!result) {
+      return [
+        {
+          sourceType: 'technical',
+          title: 'Cloudflare URL Scanner scan still processing',
+          url: resultUrl,
+          snippet:
+            'Cloudflare accepted the scan submission, but the result was still processing within the report window.',
+          sentiment: 'neutral',
+          weight: 1,
+          observedAt,
+        },
+      ]
+    }
+
+    const malicious = result.result?.verdicts?.overall?.malicious === true
+    const phishingSignals = result.result?.verdicts?.phishing ?? []
+    const categories = result.result?.verdicts?.overall?.categories ?? []
+    const finalUrl = result.result?.page?.finalURL ?? result.result?.page?.url
+    const ip = result.result?.page?.ip
+    const asn = result.result?.page?.asn
+    const asnName = result.result?.page?.asnname
+    const tech = result.result?.meta?.processors?.tech ?? []
+
+    const details = [
+      finalUrl ? `final URL: ${finalUrl}` : null,
+      ip ? `IP: ${ip}` : null,
+      asn || asnName ? `ASN: ${[asn, asnName].filter(Boolean).join(' ')}` : null,
+      categories.length > 0 ? `categories: ${categories.join(', ')}` : null,
+      phishingSignals.length > 0 ? `phishing signals: ${phishingSignals.join(', ')}` : null,
+      tech.length > 0 ? `technology: ${tech.slice(0, 6).join(', ')}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ')
+
+    if (malicious || phishingSignals.length > 0) {
+      return [
+        {
+          sourceType: 'technical',
+          title: 'Cloudflare URL Scanner flagged malicious behavior',
+          url: resultUrl,
+          snippet:
+            details ||
+            'Cloudflare URL Scanner marked this scan as malicious or phishing-related.',
+          sentiment: 'negative',
+          weight: 10,
+          observedAt,
+        },
+      ]
+    }
+
+    return [
+      {
+        sourceType: 'technical',
+        title: 'Cloudflare URL Scanner found no malicious verdict',
+        url: resultUrl,
+        snippet:
+          details ||
+          'Cloudflare completed the scan without a malicious overall verdict.',
+        sentiment: 'positive',
+        weight: 2,
+        observedAt,
+      },
+    ]
+  } catch (error) {
+    return [
+      providerUnavailableEvidence(
+        'Cloudflare URL Scanner check unavailable',
+        observedAt,
+        describeProviderError(error),
+      ),
+    ]
+  }
 }
 
 export async function collectUrlhausEvidence(
@@ -1605,6 +1792,95 @@ function describeHttpProviderStatus(provider: string, status: number) {
   }
 
   return `${provider} returned HTTP ${status}.`
+}
+
+async function createCloudflareUrlScannerScan(
+  url: string,
+  accountId: string,
+  apiToken: string,
+  visibility: string,
+) {
+  const response = await fetchWithTimeout(
+    `${CLOUDFLARE_URL_SCANNER_BASE_URL}/${encodeURIComponent(accountId)}/urlscanner/v2/scan`,
+    7000,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${apiToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        visibility,
+        screenshotsResolutions: ['desktop'],
+      }),
+    },
+  )
+
+  if (!response.ok) {
+    throw new Error(describeHttpProviderStatus('Cloudflare URL Scanner', response.status))
+  }
+
+  const payload = (await response.json()) as CloudflareUrlScannerScanRequest
+  const scanId = payload.result?.uuid
+
+  if (!scanId) {
+    throw new Error(
+      payload.errors?.[0]?.message || 'Cloudflare URL Scanner did not return a scan UUID.',
+    )
+  }
+
+  return scanId
+}
+
+async function pollCloudflareUrlScannerResult(
+  scanId: string,
+  accountId: string,
+  apiToken: string,
+) {
+  for (let attempt = 0; attempt < CLOUDFLARE_URL_SCANNER_POLL_ATTEMPTS; attempt += 1) {
+    const response = await fetchWithTimeout(
+      `${CLOUDFLARE_URL_SCANNER_BASE_URL}/${encodeURIComponent(accountId)}/urlscanner/v2/result/${encodeURIComponent(scanId)}`,
+      7000,
+      {
+        headers: {
+          authorization: `Bearer ${apiToken}`,
+          accept: 'application/json',
+        },
+      },
+    )
+
+    if (response.status === 404) {
+      if (attempt < CLOUDFLARE_URL_SCANNER_POLL_ATTEMPTS - 1) {
+        await sleep(CLOUDFLARE_URL_SCANNER_POLL_DELAY_MS)
+        continue
+      }
+
+      return null
+    }
+
+    if (!response.ok) {
+      throw new Error(describeHttpProviderStatus('Cloudflare URL Scanner', response.status))
+    }
+
+    return (await response.json()) as CloudflareUrlScannerResultResponse
+  }
+
+  return null
+}
+
+function getCloudflareScannerResultUrl(result: CloudflareUrlScannerResultResponse | null) {
+  if (!result) {
+    return null
+  }
+
+  return result.result?.task?.scanURL ?? result.result?.task?.screenshotURL ?? null
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 async function fetchPage(url: string) {

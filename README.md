@@ -69,6 +69,7 @@ Cloudflare configuration lives in `wrangler.jsonc`. It defines the Worker entryp
 
 - `AI_MODEL`
 - `CACHE_TTL_SECONDS`
+- `CLOUDFLARE_URL_SCANNER_VISIBILITY` (default: `Unlisted`)
 - `TURNSTILE_SITE_KEY`
 
 Secrets are configured with Wrangler:
@@ -77,6 +78,8 @@ Secrets are configured with Wrangler:
 bunx wrangler secret put GOOGLE_WEB_RISK_API_KEY
 bunx wrangler secret put URLHAUS_AUTH_KEY
 bunx wrangler secret put TAVILY_API_KEY
+bunx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+bunx wrangler secret put CLOUDFLARE_URL_SCANNER_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
 ```
 
@@ -86,6 +89,7 @@ Optional behavior:
 - Missing `TAVILY_API_KEY` reduces external reputation evidence.
 - Missing `URLHAUS_AUTH_KEY` skips URLhaus malware checks.
 - Missing `GOOGLE_WEB_RISK_API_KEY` skips Google Web Risk checks.
+- Missing `CLOUDFLARE_ACCOUNT_ID` or `CLOUDFLARE_URL_SCANNER_API_TOKEN` skips Cloudflare URL Scanner checks.
 - OpenPhish and RDAP checks use public HTTPS sources and do not need API keys.
 
 ## Project Structure

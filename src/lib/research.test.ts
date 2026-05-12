@@ -4,6 +4,7 @@ import {
   buildTavilyQueries,
   classifyEvidenceFactors,
   clearRdapBootstrapCacheForTests,
+  collectCloudflareUrlScannerEvidence,
   collectOpenPhishEvidence,
   collectRdapEvidence,
   collectSiteEvidence,
@@ -381,6 +382,139 @@ describe('RDAP evidence collection', () => {
 })
 
 describe('threat provider mapping', () => {
+  it('skips Cloudflare URL Scanner when config is missing', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const evidence = await collectCloudflareUrlScannerEvidence(createRequest(), {})
+
+    expect(evidence[0]?.title).toBe('Cloudflare URL Scanner is not configured')
+    expect(evidence[0]?.sentiment).toBe('neutral')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('maps finished Cloudflare URL Scanner clean verdicts to positive technical evidence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            result: { uuid: 'scan-123' },
+          }),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            result: {
+              task: {
+                scanURL: 'https://radar.cloudflare.com/scan/scan-123',
+              },
+              page: {
+                finalURL: 'https://example.com/',
+                ip: '93.184.216.34',
+                asn: 15133,
+                asnname: 'EDGECAST',
+              },
+              verdicts: {
+                overall: {
+                  malicious: false,
+                  categories: ['shopping'],
+                },
+                phishing: [],
+              },
+              meta: {
+                processors: {
+                  tech: ['Shopify'],
+                },
+              },
+            },
+          }),
+        ),
+    )
+
+    const evidence = await collectCloudflareUrlScannerEvidence(createRequest(), {
+      CLOUDFLARE_ACCOUNT_ID: 'acct-1',
+      CLOUDFLARE_URL_SCANNER_API_TOKEN: 'token-1',
+    })
+
+    expect(evidence[0]?.title).toBe('Cloudflare URL Scanner found no malicious verdict')
+    expect(evidence[0]?.sentiment).toBe('positive')
+    expect(evidence[0]?.url).toBe('https://radar.cloudflare.com/scan/scan-123')
+  })
+
+  it('returns neutral Cloudflare evidence when polling still gets in-progress 404 results', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            result: { uuid: 'scan-123' },
+          }),
+        )
+        .mockResolvedValueOnce(new Response('', { status: 404 }))
+        .mockResolvedValueOnce(new Response('', { status: 404 })),
+    )
+
+    const evidencePromise = collectCloudflareUrlScannerEvidence(createRequest(), {
+      CLOUDFLARE_ACCOUNT_ID: 'acct-1',
+      CLOUDFLARE_URL_SCANNER_API_TOKEN: 'token-1',
+    })
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    const evidence = await evidencePromise
+
+    expect(evidence[0]?.title).toBe('Cloudflare URL Scanner scan still processing')
+    expect(evidence[0]?.sentiment).toBe('neutral')
+  })
+
+  it('maps Cloudflare malicious verdicts to strong negative technical evidence', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            result: { uuid: 'scan-malicious' },
+          }),
+        )
+        .mockResolvedValueOnce(
+          jsonResponse({
+            success: true,
+            result: {
+              task: {
+                scanURL: 'https://radar.cloudflare.com/scan/scan-malicious',
+              },
+              page: {
+                finalURL: 'https://example.com/login',
+              },
+              verdicts: {
+                overall: {
+                  malicious: true,
+                  categories: ['phishing'],
+                },
+                phishing: ['credential_theft'],
+              },
+            },
+          }),
+        ),
+    )
+
+    const evidence = await collectCloudflareUrlScannerEvidence(createRequest(), {
+      CLOUDFLARE_ACCOUNT_ID: 'acct-1',
+      CLOUDFLARE_URL_SCANNER_API_TOKEN: 'token-1',
+    })
+
+    expect(evidence[0]?.title).toBe('Cloudflare URL Scanner flagged malicious behavior')
+    expect(evidence[0]?.sentiment).toBe('negative')
+    expect(evidence[0]?.weight).toBe(10)
+  })
+
   it('maps URLhaus matches to critical negative evidence', async () => {
     vi.stubGlobal(
       'fetch',
