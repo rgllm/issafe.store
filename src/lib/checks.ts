@@ -5,6 +5,11 @@ import type { StoreSafetyReport, StoreSafetyRequest } from '../types/report'
 import type { StoreSafetyAgent } from '../agents/store-safety-agent'
 
 const REPORT_CACHE_VERSION = 'coupon-sidebar-2026-05-11-v1'
+const AGENT_ROUTING_RETRY = {
+  maxAttempts: 3,
+  baseDelayMs: 150,
+  maxDelayMs: 1_000,
+} as const
 
 export type StartCheckInput = {
   url: string
@@ -31,7 +36,9 @@ export async function startStoreCheck(
     ...normalized,
     id,
   }
-  const agent = await getAgentByName<Env, StoreSafetyAgent>(env.StoreSafetyAgent, id)
+  const agent = await getAgentByName<Env, StoreSafetyAgent>(env.StoreSafetyAgent, id, {
+    routingRetry: AGENT_ROUTING_RETRY,
+  })
   const report = await agent.startCheck(request)
 
   return { report, cached: false }
@@ -44,7 +51,9 @@ export async function getStoreCheck(id: string, env: Env) {
     return { report: cached, cached: true }
   }
 
-  const agent = await getAgentByName<Env, StoreSafetyAgent>(env.StoreSafetyAgent, id)
+  const agent = await getAgentByName<Env, StoreSafetyAgent>(env.StoreSafetyAgent, id, {
+    routingRetry: AGENT_ROUTING_RETRY,
+  })
   const report = await agent.getCurrentReport()
 
   return report ? { report, cached: false } : null

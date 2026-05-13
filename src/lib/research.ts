@@ -1,5 +1,9 @@
 import { getDomain } from 'tldts'
 import { dedupeEvidence, scoreEvidence } from './scoring'
+import {
+  resumeStoreResearch,
+  type StoreResearchCheckpoint,
+} from './store-check-resilience'
 import type { RiskFactor, RiskFactorKey } from './scoring'
 import type {
   Coupon,
@@ -18,6 +22,19 @@ type ResearchEnv = {
   GOOGLE_WEB_RISK_API_KEY?: string
   TAVILY_API_KEY?: string
   URLHAUS_AUTH_KEY?: string
+}
+
+export type { StoreResearchCheckpoint } from './store-check-resilience'
+
+export type ResearchProgressReporter = (
+  status: StoreSafetyReport['status'],
+  summary: string,
+  progressStep: number,
+) => void | Promise<void>
+
+type RunStoreResearchOptions = {
+  checkpoint?: StoreResearchCheckpoint | null
+  onCheckpoint?: (checkpoint: StoreResearchCheckpoint) => void | Promise<void>
 }
 
 type TavilyQuery = {
@@ -264,72 +281,28 @@ export function clearRdapBootstrapCacheForTests() {
 export async function runStoreResearch(
   request: StoreSafetyRequest,
   env: ResearchEnv,
-  reportProgress?: (
-    status: StoreSafetyReport['status'],
-    summary: string,
-    progressStep: number,
-  ) => void,
+  reportProgress?: ResearchProgressReporter,
+  options: RunStoreResearchOptions = {},
 ): Promise<StoreSafetyReport> {
-  const createdAt = new Date().toISOString()
-  const expiresAt = new Date(
-    Date.now() + getCacheTtlSeconds(env) * 1000,
-  ).toISOString()
-
-  reportProgress?.(
-    'researching',
-    'Checking the store site and public signals.',
-    1,
-  )
-
-  const siteEvidence = await collectSiteEvidence(request.normalizedUrl)
-  reportProgress?.('researching', 'Checking domain registration data.', 2)
-
-  const rdapEvidence = await collectRdapEvidence(request.hostname)
-  reportProgress?.('researching', 'Checking public threat-list signals.', 3)
-
-  const threatEvidence = await collectThreatListEvidence(request, env)
-  reportProgress?.('researching', 'Searching for external reputation signals.', 4)
-
-  const [searchEvidence, coupons] = await Promise.all([
-    collectTavilyEvidence(request.hostname, env),
-    collectTavilyCoupons(request.hostname, env),
-  ])
-  const evidence = dedupeEvidence([
-    ...siteEvidence,
-    ...rdapEvidence,
-    ...threatEvidence,
-    ...searchEvidence,
-  ])
-
-  reportProgress?.(
-    'scoring',
-    'Classifying evidence and calculating the risk score.',
-    5,
-  )
-
-  const classifiedFactors = await classifyEvidenceFactors(request, evidence, env)
-  const score = scoreEvidence(evidence, classifiedFactors)
-
-  reportProgress?.(
-    'scoring',
-    'Summarizing evidence and calculating the risk score.',
-    6,
-  )
-
-  const summary = await summarizeReport(request, evidence, score, env)
-
-  return {
-    ...request,
-    status: 'complete',
-    score: score.score,
-    confidence: score.confidence,
-    recommendation: score.recommendation,
-    summary,
-    evidence,
-    coupons,
-    createdAt,
-    expiresAt,
-  }
+  return resumeStoreResearch({
+    request,
+    env,
+    ttlSeconds: getCacheTtlSeconds(env),
+    checkpoint: options.checkpoint,
+    onCheckpoint: options.onCheckpoint,
+    onProgress: reportProgress,
+    steps: {
+      collectSiteEvidence,
+      collectRdapEvidence,
+      collectThreatListEvidence,
+      collectTavilyEvidence,
+      collectTavilyCoupons,
+      classifyEvidenceFactors,
+      scoreEvidence,
+      summarizeReport,
+      dedupeEvidence,
+    },
+  })
 }
 
 export function getCacheTtlSeconds(env: Pick<ResearchEnv, 'CACHE_TTL_SECONDS'>) {
