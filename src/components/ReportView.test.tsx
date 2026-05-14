@@ -64,6 +64,44 @@ describe('ReportView coupon sidebar', () => {
     expect(screen.queryByText('No code discount offer')).toBeNull()
   })
 
+  it('renders coupon codes as inline shrink-wrapped chips', () => {
+    const { container } = render(
+      <ReportView
+        cached={false}
+        report={{
+          ...baseReport,
+          coupons: [
+            {
+              title: 'Example.com coupon code',
+              description: 'Use code EXTRA for 20% off.',
+              code: 'EXTRA',
+              source: 'deals.example',
+              observedAt: '2026-05-14T18:00:00.000Z',
+            },
+            {
+              title: 'Example.com promo code',
+              description: 'Use code THIS for 10% off.',
+              code: 'THIS',
+              source: 'deals.example',
+              observedAt: '2026-05-14T18:00:00.000Z',
+            },
+          ],
+        }}
+      />,
+    )
+
+    const firstChip = screen.getByText('EXTRA').closest('article')
+    const secondChip = screen.getByText('THIS').closest('article')
+    const list = firstChip?.parentElement
+
+    expect(list?.className).toContain('flex')
+    expect(list?.className).toContain('flex-wrap')
+    expect(firstChip).toBeTruthy()
+    expect(secondChip).toBeTruthy()
+    expect(firstChip?.className).toContain('w-fit')
+    expect(firstChip?.className).toContain('inline-flex')
+  })
+
   it('hides the coupons section when no coupon has an extracted code', () => {
     render(
       <ReportView

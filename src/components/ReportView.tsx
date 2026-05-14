@@ -312,7 +312,7 @@ function CouponList({ coupons }: { coupons: Coupon[] }) {
         <Tag className="size-4 text-[var(--primary)]" aria-hidden="true" />
         <h2 className="m-0 text-sm font-semibold text-[var(--sea-ink)]">Coupons</h2>
       </div>
-      <div className="mt-3 space-y-3">
+      <div className="mt-3 flex flex-wrap gap-2">
         {codedCoupons.slice(0, 3).map((coupon, index) => (
           <CouponCard key={`${coupon.code}-${index}`} code={coupon.code} />
         ))}
@@ -323,8 +323,8 @@ function CouponList({ coupons }: { coupons: Coupon[] }) {
 
 function CouponCard({ code }: { code: string }) {
   return (
-    <article className="rounded-lg border border-[var(--line)] bg-[var(--surface-muted)] px-3 py-2.5">
-      <p className="m-0 truncate font-mono text-sm font-semibold tracking-[0.08em] text-[var(--sea-ink)]">
+    <article className="inline-flex w-fit items-center rounded-md border border-[var(--line-strong)] bg-[var(--surface)] px-3 py-1.5 shadow-sm">
+      <p className="m-0 truncate font-mono text-[0.8125rem] font-semibold tracking-[0.18em] text-[var(--sea-ink)]">
         {code}
       </p>
     </article>
