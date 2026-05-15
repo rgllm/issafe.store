@@ -15,6 +15,11 @@ import { TurnstileWidget } from "../components/TurnstileWidget";
 import { trackStoreEvent } from "../lib/umami";
 import type { StoreSafetyReport } from "../types/report";
 
+const SITE_URL = "https://issafe.store";
+const HOME_TITLE = "Is Safe Store | Scam store checker before you buy";
+const HOME_DESCRIPTION =
+  "Check whether an online store looks safe before checkout. Paste a store URL to get a risk score, confidence rating, recommendation, and cited public evidence.";
+
 type CheckResponse = {
   report: StoreSafetyReport;
   cached: boolean;
@@ -64,7 +69,126 @@ const SIGNALS = [
   },
 ];
 
-export const Route = createFileRoute("/")({ component: HomePage });
+const FAQS = [
+  {
+    question: "Can IsSafe.store guarantee a store is safe?",
+    answer:
+      "No. IsSafe.store is a public-signal risk assessment. It can surface warning signs and reputation evidence, but it cannot guarantee merchant behavior, delivery, refunds, or payment safety.",
+  },
+  {
+    question: "What signals does the store checker use?",
+    answer:
+      "The checker reviews public signals such as domain registration data, site accessibility, SSL status, policy and contact signals, public reputation results, and known fraud or phishing indicators.",
+  },
+  {
+    question: "Do I need an account or purchase data?",
+    answer:
+      "No. You only paste a store URL. IsSafe.store does not require an account and does not use private purchase, payment, or order history.",
+  },
+];
+
+export const Route = createFileRoute("/")({
+  head: () => ({
+    meta: [
+      {
+        title: HOME_TITLE,
+      },
+      {
+        name: "description",
+        content: HOME_DESCRIPTION,
+      },
+      {
+        name: "keywords",
+        content:
+          "scam store checker, store safety checker, online store legit checker, online shopping safety, ecommerce risk score, fraud check",
+      },
+      {
+        name: "robots",
+        content: "index, follow",
+      },
+      {
+        property: "og:type",
+        content: "website",
+      },
+      {
+        property: "og:title",
+        content: HOME_TITLE,
+      },
+      {
+        property: "og:description",
+        content:
+          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
+      },
+      {
+        property: "og:url",
+        content: `${SITE_URL}/`,
+      },
+      {
+        property: "og:image",
+        content: `${SITE_URL}/logo512.png`,
+      },
+      {
+        name: "twitter:card",
+        content: "summary",
+      },
+      {
+        name: "twitter:title",
+        content: HOME_TITLE,
+      },
+      {
+        name: "twitter:description",
+        content:
+          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
+      },
+      {
+        name: "twitter:image",
+        content: `${SITE_URL}/logo512.png`,
+      },
+      {
+        "script:ld+json": {
+          "@context": "https://schema.org",
+          "@type": "WebApplication",
+          name: "IsSafe.store",
+          url: `${SITE_URL}/`,
+          applicationCategory: "SecurityApplication",
+          operatingSystem: "Web",
+          description: HOME_DESCRIPTION,
+          offers: {
+            "@type": "Offer",
+            price: "0",
+            priceCurrency: "USD",
+          },
+          creator: {
+            "@type": "Organization",
+            name: "IsSafe.store",
+            url: `${SITE_URL}/`,
+          },
+        },
+      },
+      {
+        "script:ld+json": {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: FAQS.map((faq) => ({
+            "@type": "Question",
+            name: faq.question,
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: faq.answer,
+            },
+          })),
+        },
+      },
+    ],
+    links: [
+      {
+        rel: "canonical",
+        href: `${SITE_URL}/`,
+      },
+    ],
+  }),
+  component: HomePage,
+});
 
 function HomePage() {
   const navigate = useNavigate();
@@ -287,6 +411,38 @@ function HomePage() {
               history. Results represent a best-effort public-signal assessment
               and should not be the sole basis for any financial decision.
             </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="border-t border-border" />
+
+      <section id="faq" className="px-6 py-16">
+        <div className="mx-auto flex max-w-3xl flex-col gap-8">
+          <div className="text-center">
+            <h2 className="m-0 text-balance text-2xl font-semibold text-foreground">
+              Common Store Safety Questions
+            </h2>
+            <p className="mx-auto mt-2 max-w-2xl text-pretty text-base leading-7 text-muted-foreground">
+              A quick check can reduce uncertainty, but it should sit alongside
+              normal payment, refund, and merchant verification habits.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            {FAQS.map((faq) => (
+              <article
+                key={faq.question}
+                className="rounded-md border border-border bg-white p-5 dark:bg-card"
+              >
+                <h3 className="m-0 text-base font-semibold text-foreground">
+                  {faq.question}
+                </h3>
+                <p className="m-0 mt-2 text-sm leading-6 text-muted-foreground">
+                  {faq.answer}
+                </p>
+              </article>
+            ))}
           </div>
         </div>
       </section>

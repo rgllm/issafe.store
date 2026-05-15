@@ -1,6 +1,82 @@
 import { createFileRoute } from '@tanstack/react-router'
 
+const SITE_URL = 'https://issafe.store'
+const ABOUT_TITLE = 'About IsSafe.store | Public store safety checks'
+const ABOUT_DESCRIPTION =
+  'Learn how IsSafe.store checks online stores using public reputation evidence, domain metadata, technical signals, and AI-assisted risk synthesis.'
+
 export const Route = createFileRoute('/about')({
+  head: () => ({
+    meta: [
+      {
+        title: ABOUT_TITLE,
+      },
+      {
+        name: 'description',
+        content: ABOUT_DESCRIPTION,
+      },
+      {
+        name: 'robots',
+        content: 'index, follow',
+      },
+      {
+        property: 'og:type',
+        content: 'website',
+      },
+      {
+        property: 'og:title',
+        content: ABOUT_TITLE,
+      },
+      {
+        property: 'og:description',
+        content: ABOUT_DESCRIPTION,
+      },
+      {
+        property: 'og:url',
+        content: `${SITE_URL}/about`,
+      },
+      {
+        property: 'og:image',
+        content: `${SITE_URL}/logo512.png`,
+      },
+      {
+        name: 'twitter:card',
+        content: 'summary',
+      },
+      {
+        name: 'twitter:title',
+        content: ABOUT_TITLE,
+      },
+      {
+        name: 'twitter:description',
+        content: ABOUT_DESCRIPTION,
+      },
+      {
+        name: 'twitter:image',
+        content: `${SITE_URL}/logo512.png`,
+      },
+      {
+        'script:ld+json': {
+          '@context': 'https://schema.org',
+          '@type': 'AboutPage',
+          name: 'About IsSafe.store',
+          url: `${SITE_URL}/about`,
+          description: ABOUT_DESCRIPTION,
+          isPartOf: {
+            '@type': 'WebSite',
+            name: 'IsSafe.store',
+            url: `${SITE_URL}/`,
+          },
+        },
+      },
+    ],
+    links: [
+      {
+        rel: 'canonical',
+        href: `${SITE_URL}/about`,
+      },
+    ],
+  }),
   component: About,
 })
 
@@ -18,6 +94,41 @@ function About() {
           risk assessment based on public information, not a guarantee of
           purchase safety.
         </p>
+      </section>
+
+      <section className="mt-6 grid gap-4 md:grid-cols-3">
+        <article className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5">
+          <h2 className="m-0 text-base font-semibold text-[var(--sea-ink)]">
+            Public evidence first
+          </h2>
+          <p className="m-0 mt-2 text-sm leading-6 text-[var(--sea-ink-soft)]">
+            Reports focus on signals a shopper can verify: reachable pages,
+            policy coverage, contact clues, domain registration data, public
+            reviews, and fraud database indicators.
+          </p>
+        </article>
+
+        <article className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5">
+          <h2 className="m-0 text-base font-semibold text-[var(--sea-ink)]">
+            Risk, not certainty
+          </h2>
+          <p className="m-0 mt-2 text-sm leading-6 text-[var(--sea-ink-soft)]">
+            A clean report does not guarantee a safe purchase. It helps you spot
+            obvious warning signs before checkout and decide whether a store
+            deserves more manual review.
+          </p>
+        </article>
+
+        <article className="rounded-lg border border-[var(--line)] bg-[var(--surface)] p-5">
+          <h2 className="m-0 text-base font-semibold text-[var(--sea-ink)]">
+            Built for quick checks
+          </h2>
+          <p className="m-0 mt-2 text-sm leading-6 text-[var(--sea-ink-soft)]">
+            Paste a URL, review the score and cited evidence, then use normal
+            buyer protections such as credit card payments, refund policies, and
+            independent review checks.
+          </p>
+        </article>
       </section>
     </main>
   )

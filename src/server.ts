@@ -4,14 +4,78 @@ import { StoreSafetyAgent } from './agents/store-safety-agent'
 
 export { StoreSafetyAgent }
 
+const CANONICAL_HOST = 'issafe.store'
+const WWW_HOST = `www.${CANONICAL_HOST}`
+const ONE_YEAR_SECONDS = 31_536_000
+
 export default {
   async fetch(request: Request, env: Env) {
+    const redirectResponse = getCanonicalRedirect(request)
+
+    if (redirectResponse) {
+      return redirectResponse
+    }
+
     const agentResponse = await routeAgentRequest(request, env)
 
     if (agentResponse) {
-      return agentResponse
+      return withSeoHeaders(request, agentResponse)
     }
 
-    return handler.fetch(request)
+    const response = await handler.fetch(request)
+
+    return withSeoHeaders(request, response)
   },
+}
+
+function getCanonicalRedirect(request: Request) {
+  const url = new URL(request.url)
+  const normalizedPathname = getNormalizedPathname(url.pathname)
+  const isProductionHost = url.hostname === CANONICAL_HOST || url.hostname === WWW_HOST
+  const shouldRedirect =
+    (isProductionHost && url.protocol !== 'https:') ||
+    url.hostname === WWW_HOST ||
+    normalizedPathname !== url.pathname
+
+  if (!shouldRedirect) {
+    return null
+  }
+
+  url.protocol = 'https:'
+
+  if (url.hostname === WWW_HOST) {
+    url.hostname = CANONICAL_HOST
+  }
+
+  url.pathname = normalizedPathname
+
+  return Response.redirect(url.toString(), 308)
+}
+
+function getNormalizedPathname(pathname: string) {
+  if (pathname === '/about/' || pathname.toLowerCase() === '/about') {
+    return '/about'
+  }
+
+  return pathname
+}
+
+function withSeoHeaders(request: Request, response: Response) {
+  const url = new URL(request.url)
+  const headers = new Headers(response.headers)
+  const isProductionHost = url.hostname === CANONICAL_HOST || url.hostname === WWW_HOST
+
+  if (isProductionHost && url.protocol === 'https:') {
+    headers.set('strict-transport-security', `max-age=${ONE_YEAR_SECONDS}; includeSubDomains`)
+  }
+
+  if (response.ok && url.pathname.startsWith('/assets/')) {
+    headers.set('cache-control', `public, max-age=${ONE_YEAR_SECONDS}, immutable`)
+  }
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
 }

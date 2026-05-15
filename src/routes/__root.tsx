@@ -23,67 +23,16 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "Is Safe Store | Check store risk before you buy",
-      },
-      {
-        name: "description",
-        content:
-          "Check whether an online store looks safe before checkout. Paste a store URL to get a risk score, confidence rating, recommendation, and cited public evidence.",
-      },
-      {
-        name: "keywords",
-        content:
-          "store safety checker, scam store checker, online shopping safety, ecommerce risk score, fraud check",
-      },
-      {
         name: "author",
         content: "rgllm",
-      },
-      {
-        name: "robots",
-        content: "index, follow",
       },
       {
         name: "theme-color",
         content: "#289e62",
       },
       {
-        property: "og:type",
-        content: "website",
-      },
-      {
-        property: "og:title",
-        content: "Is Safe Store | Check store risk before you buy",
-      },
-      {
-        property: "og:description",
-        content:
-          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
-      },
-      {
-        property: "og:image",
-        content: "/logo512.png",
-      },
-      {
         property: "og:site_name",
         content: "Is Safe Store",
-      },
-      {
-        name: "twitter:card",
-        content: "summary",
-      },
-      {
-        name: "twitter:title",
-        content: "Is Safe Store | Check store risk before you buy",
-      },
-      {
-        name: "twitter:description",
-        content:
-          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
-      },
-      {
-        name: "twitter:image",
-        content: "/logo512.png",
       },
     ],
     links: [
@@ -103,10 +52,6 @@ export const Route = createRootRoute({
       {
         rel: "manifest",
         href: "/manifest.json",
-      },
-      {
-        rel: "canonical",
-        href: "https://issafe.store/",
       },
     ],
     scripts: import.meta.env.PROD
