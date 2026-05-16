@@ -4,6 +4,13 @@ import {
   resumeStoreResearch,
   type StoreResearchCheckpoint,
 } from './store-check-resilience'
+import {
+  DAILY_WINDOW_SECONDS,
+  LAUNCH_LIMIT_DEFAULTS,
+  UsageLimitError,
+  assertUsageLimits,
+  getConfiguredLimit,
+} from './usage-limits'
 import type { RiskFactor, RiskFactorKey } from './scoring'
 import type {
   Coupon,
@@ -19,7 +26,11 @@ type ResearchEnv = {
   CLOUDFLARE_ACCOUNT_ID?: string
   CLOUDFLARE_URL_SCANNER_API_TOKEN?: string
   CLOUDFLARE_URL_SCANNER_VISIBILITY?: string
+  DB?: D1Database
   GOOGLE_WEB_RISK_API_KEY?: string
+  MAX_AI_CALLS_PER_DAY?: string
+  MAX_TAVILY_CALLS_PER_DAY?: string
+  MAX_URL_SCANNER_SUBMISSIONS_PER_DAY?: string
   TAVILY_API_KEY?: string
   URLHAUS_AUTH_KEY?: string
 }
@@ -843,7 +854,9 @@ export async function collectThreatListEvidence(
     | 'CLOUDFLARE_ACCOUNT_ID'
     | 'CLOUDFLARE_URL_SCANNER_API_TOKEN'
     | 'CLOUDFLARE_URL_SCANNER_VISIBILITY'
+    | 'DB'
     | 'GOOGLE_WEB_RISK_API_KEY'
+    | 'MAX_URL_SCANNER_SUBMISSIONS_PER_DAY'
     | 'URLHAUS_AUTH_KEY'
   >,
 ): Promise<Evidence[]> {
@@ -864,6 +877,8 @@ export async function collectCloudflareUrlScannerEvidence(
     | 'CLOUDFLARE_ACCOUNT_ID'
     | 'CLOUDFLARE_URL_SCANNER_API_TOKEN'
     | 'CLOUDFLARE_URL_SCANNER_VISIBILITY'
+    | 'DB'
+    | 'MAX_URL_SCANNER_SUBMISSIONS_PER_DAY'
   >,
 ): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
@@ -888,6 +903,28 @@ export async function collectCloudflareUrlScannerEvidence(
     env.CLOUDFLARE_URL_SCANNER_VISIBILITY?.trim() || CLOUDFLARE_URL_SCANNER_DEFAULT_VISIBILITY
 
   try {
+    if (env.DB) {
+      await assertUsageLimits(env.DB, [
+        {
+          scope: 'providers:url-scanner:submissions',
+          windowSeconds: DAILY_WINDOW_SECONDS,
+          limit: getConfiguredLimit(
+            env.MAX_URL_SCANNER_SUBMISSIONS_PER_DAY,
+            LAUNCH_LIMIT_DEFAULTS.urlScannerSubmissionsPerDay,
+          ),
+          message:
+            'Cloudflare URL Scanner daily launch limit reached. This signal is not included in the score.',
+        },
+        {
+          scope: 'providers:url-scanner:submissions',
+          windowSeconds: LAUNCH_LIMIT_DEFAULTS.urlScannerSubmissionWindowSeconds,
+          limit: 1,
+          message:
+            'Cloudflare URL Scanner short-term launch limit reached. This signal is not included in the score.',
+        },
+      ])
+    }
+
     const scanId = await createCloudflareUrlScannerScan(
       request.normalizedUrl,
       accountId,
@@ -973,6 +1010,16 @@ export async function collectCloudflareUrlScannerEvidence(
       },
     ]
   } catch (error) {
+    if (error instanceof UsageLimitError) {
+      return [
+        providerUnavailableEvidence(
+          'Cloudflare URL Scanner launch limit reached',
+          observedAt,
+          error.message,
+        ),
+      ]
+    }
+
     return [
       providerUnavailableEvidence(
         'Cloudflare URL Scanner check unavailable',
@@ -1288,7 +1335,7 @@ export async function collectWebRiskEvidence(
 
 export async function collectTavilyEvidence(
   hostname: string,
-  env: Pick<ResearchEnv, 'TAVILY_API_KEY'>,
+  env: Pick<ResearchEnv, 'DB' | 'MAX_TAVILY_CALLS_PER_DAY' | 'TAVILY_API_KEY'>,
 ): Promise<Evidence[]> {
   const observedAt = new Date().toISOString()
 
@@ -1307,7 +1354,10 @@ export async function collectTavilyEvidence(
 
   const queries = buildTavilyQueries(hostname)
   const responses = await Promise.allSettled(
-    queries.map((query) => searchTavily(query, env.TAVILY_API_KEY ?? '')),
+    queries.map((query) => searchTavily(query, env)),
+  )
+  const limited = responses.some(
+    (response) => response.status === 'rejected' && response.reason instanceof UsageLimitError,
   )
   const evidence = responses.flatMap((response) => {
     if (response.status === 'rejected') {
@@ -1322,6 +1372,16 @@ export async function collectTavilyEvidence(
   })
 
   if (evidence.length === 0) {
+    if (limited) {
+      return [
+        providerUnavailableEvidence(
+          'External reputation search launch limit reached',
+          observedAt,
+          'Tavily daily launch limit reached.',
+        ),
+      ]
+    }
+
     return [providerUnavailableEvidence('External reputation search returned no usable results', observedAt)]
   }
 
@@ -1342,7 +1402,7 @@ export function buildTavilyQueries(hostname: string): TavilyQuery[] {
 
 export async function collectTavilyCoupons(
   hostname: string,
-  env: Pick<ResearchEnv, 'TAVILY_API_KEY'>,
+  env: Pick<ResearchEnv, 'DB' | 'MAX_TAVILY_CALLS_PER_DAY' | 'TAVILY_API_KEY'>,
 ): Promise<Coupon[]> {
   const observedAt = new Date().toISOString()
 
@@ -1352,7 +1412,7 @@ export async function collectTavilyCoupons(
 
   const queries = buildTavilyCouponQueries(hostname)
   const responses = await Promise.allSettled(
-    queries.map((query) => searchTavily(query, env.TAVILY_API_KEY ?? '')),
+    queries.map((query) => searchTavily(query, env)),
   )
   const coupons = responses.flatMap((response) => {
     if (response.status === 'rejected') {
@@ -1380,7 +1440,7 @@ export function buildTavilyCouponQueries(hostname: string): TavilyQuery[] {
 export async function classifyEvidenceFactors(
   request: StoreSafetyRequest,
   evidence: Evidence[],
-  env: Pick<ResearchEnv, 'AI' | 'AI_MODEL'>,
+  env: Pick<ResearchEnv, 'AI' | 'AI_MODEL' | 'DB' | 'MAX_AI_CALLS_PER_DAY'>,
 ): Promise<RiskFactor[]> {
   if (!env.AI || evidence.length === 0) {
     return []
@@ -1401,6 +1461,8 @@ export async function classifyEvidenceFactors(
   ].join('\n')
 
   try {
+    await assertWorkersAiUsageLimit(env)
+
     const response = (await env.AI.run(env.AI_MODEL ?? '@cf/zai-org/glm-4.7-flash', {
       messages: [
         {
@@ -1424,7 +1486,26 @@ export async function classifyEvidenceFactors(
   }
 }
 
-async function searchTavily(query: TavilyQuery, apiKey: string): Promise<TavilyResponse> {
+async function searchTavily(
+  query: TavilyQuery,
+  env: Pick<ResearchEnv, 'DB' | 'MAX_TAVILY_CALLS_PER_DAY' | 'TAVILY_API_KEY'>,
+): Promise<TavilyResponse> {
+  const apiKey = env.TAVILY_API_KEY ?? ''
+
+  if (env.DB) {
+    await assertUsageLimits(env.DB, [
+      {
+        scope: 'providers:tavily:calls',
+        windowSeconds: DAILY_WINDOW_SECONDS,
+        limit: getConfiguredLimit(
+          env.MAX_TAVILY_CALLS_PER_DAY,
+          LAUNCH_LIMIT_DEFAULTS.tavilyCallsPerDay,
+        ),
+        message: 'Tavily daily launch limit reached.',
+      },
+    ])
+  }
+
   const response = await fetchWithTimeout('https://api.tavily.com/search', 8000, {
     method: 'POST',
     headers: {
@@ -1662,6 +1743,8 @@ async function summarizeReport(
   ].join('\n')
 
   try {
+    await assertWorkersAiUsageLimit(env)
+
     const response = (await env.AI.run(env.AI_MODEL ?? '@cf/zai-org/glm-4.7-flash', {
       messages: [
         {
@@ -1693,6 +1776,26 @@ function buildFallbackSummary(hostname: string, recommendation: string) {
   }
 
   return `${hostname} has mixed public signals. Use caution, check independent reviews, and prefer payment methods with buyer protection.`
+}
+
+async function assertWorkersAiUsageLimit(
+  env: Pick<ResearchEnv, 'DB' | 'MAX_AI_CALLS_PER_DAY'>,
+) {
+  if (!env.DB) {
+    return
+  }
+
+  await assertUsageLimits(env.DB, [
+    {
+      scope: 'providers:workers-ai:calls',
+      windowSeconds: DAILY_WINDOW_SECONDS,
+      limit: getConfiguredLimit(
+        env.MAX_AI_CALLS_PER_DAY,
+        LAUNCH_LIMIT_DEFAULTS.aiCallsPerDay,
+      ),
+      message: 'Workers AI daily launch limit reached.',
+    },
+  ])
 }
 
 async function collectPolicyPages(urls: string[]): Promise<PolicyPage[]> {

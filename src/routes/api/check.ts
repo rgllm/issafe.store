@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { env } from 'cloudflare:workers'
 import { errorResponse, jsonResponse } from '../../lib/http'
 import { startStoreCheck } from '../../lib/checks'
+import { UsageLimitError } from '../../lib/usage-limits'
 import { UrlValidationError } from '../../lib/url'
 import { verifyTurnstileToken } from '../../lib/turnstile'
 
@@ -28,9 +29,18 @@ export const Route = createFileRoute('/api/check')({
           return errorResponse('Enter a store URL.')
         }
 
-        const turnstile = await verifyTurnstileToken(body.turnstileToken, env)
+        const turnstile = await verifyTurnstileToken(body.turnstileToken, env, {
+          required: isTurnstileRequired(request, env),
+        })
 
         if (!turnstile.success) {
+          if (turnstile.configurationError) {
+            return errorResponse(
+              'Human verification is temporarily unavailable. Try again later.',
+              503,
+            )
+          }
+
           return errorResponse('Human verification failed. Refresh and try again.', 403)
         }
 
@@ -46,9 +56,23 @@ export const Route = createFileRoute('/api/check')({
             return errorResponse(error.message)
           }
 
+          if (error instanceof UsageLimitError) {
+            return errorResponse(error.message, 429)
+          }
+
           throw error
         }
       },
     },
   },
 })
+
+function isTurnstileRequired(request: Request, runtimeEnv: Env) {
+  const url = new URL(request.url)
+
+  return (
+    runtimeEnv.TURNSTILE_REQUIRED === 'true' ||
+    url.hostname === 'issafe.store' ||
+    url.hostname === 'www.issafe.store'
+  )
+}

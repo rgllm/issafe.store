@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ReportIdRouteImport } from './routes/report.$id'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiConfigRouteImport } from './routes/api/config'
 import { Route as ApiCheckRouteImport } from './routes/api/check'
 import { Route as ApiCheckIdRouteImport } from './routes/api/check.$id'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const ReportIdRoute = ReportIdRouteImport.update({
   id: '/report/$id',
   path: '/report/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiConfigRoute = ApiConfigRouteImport.update({
@@ -52,6 +58,7 @@ export interface FileRoutesByFullPath {
   '/about': typeof AboutRoute
   '/api/check': typeof ApiCheckRouteWithChildren
   '/api/config': typeof ApiConfigRoute
+  '/api/health': typeof ApiHealthRoute
   '/report/$id': typeof ReportIdRoute
   '/api/check/$id': typeof ApiCheckIdRoute
 }
@@ -60,6 +67,7 @@ export interface FileRoutesByTo {
   '/about': typeof AboutRoute
   '/api/check': typeof ApiCheckRouteWithChildren
   '/api/config': typeof ApiConfigRoute
+  '/api/health': typeof ApiHealthRoute
   '/report/$id': typeof ReportIdRoute
   '/api/check/$id': typeof ApiCheckIdRoute
 }
@@ -69,6 +77,7 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/api/check': typeof ApiCheckRouteWithChildren
   '/api/config': typeof ApiConfigRoute
+  '/api/health': typeof ApiHealthRoute
   '/report/$id': typeof ReportIdRoute
   '/api/check/$id': typeof ApiCheckIdRoute
 }
@@ -79,6 +88,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/api/check'
     | '/api/config'
+    | '/api/health'
     | '/report/$id'
     | '/api/check/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -87,6 +97,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/api/check'
     | '/api/config'
+    | '/api/health'
     | '/report/$id'
     | '/api/check/$id'
   id:
@@ -95,6 +106,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/api/check'
     | '/api/config'
+    | '/api/health'
     | '/report/$id'
     | '/api/check/$id'
   fileRoutesById: FileRoutesById
@@ -104,6 +116,7 @@ export interface RootRouteChildren {
   AboutRoute: typeof AboutRoute
   ApiCheckRoute: typeof ApiCheckRouteWithChildren
   ApiConfigRoute: typeof ApiConfigRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ReportIdRoute: typeof ReportIdRoute
 }
 
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/report/$id'
       fullPath: '/report/$id'
       preLoaderRoute: typeof ReportIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/config': {
@@ -171,6 +191,7 @@ const rootRouteChildren: RootRouteChildren = {
   AboutRoute: AboutRoute,
   ApiCheckRoute: ApiCheckRouteWithChildren,
   ApiConfigRoute: ApiConfigRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ReportIdRoute: ReportIdRoute,
 }
 export const routeTree = rootRouteImport
