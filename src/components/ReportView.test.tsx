@@ -65,7 +65,7 @@ describe('ReportView coupon sidebar', () => {
   })
 
   it('renders coupon codes as inline shrink-wrapped chips', () => {
-    const { container } = render(
+    render(
       <ReportView
         cached={false}
         report={{

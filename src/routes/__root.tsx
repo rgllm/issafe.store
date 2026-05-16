@@ -6,6 +6,7 @@ import Header from "../components/Header";
 import {
   UMAMI_REPLAY_SAMPLE_RATE,
   UMAMI_WEBSITE_ID,
+  shouldEnableUmamiReplay,
 } from "../lib/umami";
 
 import appCss from "../styles.css?url";
@@ -62,14 +63,18 @@ export const Route = createRootRoute({
             "data-website-id": UMAMI_WEBSITE_ID,
             "data-performance": "true",
           },
-          {
-            defer: true,
-            src: "https://cloud.umami.is/recorder.js",
-            "data-website-id": UMAMI_WEBSITE_ID,
-            "data-sample-rate": UMAMI_REPLAY_SAMPLE_RATE,
-            "data-mask-level": "moderate",
-            "data-max-duration": "300000",
-          },
+          ...(shouldEnableUmamiReplay
+            ? [
+                {
+                  defer: true,
+                  src: "https://cloud.umami.is/recorder.js",
+                  "data-website-id": UMAMI_WEBSITE_ID,
+                  "data-sample-rate": UMAMI_REPLAY_SAMPLE_RATE,
+                  "data-mask-level": "moderate",
+                  "data-max-duration": "300000",
+                },
+              ]
+            : []),
         ]
       : [],
   }),

@@ -5,11 +5,13 @@ const {
   getCachedReportMock,
   normalizeStoreUrlMock,
   createCheckIdMock,
+  assertUsageLimitsMock,
 } = vi.hoisted(() => ({
   getAgentByNameMock: vi.fn(),
   getCachedReportMock: vi.fn(),
   normalizeStoreUrlMock: vi.fn(),
   createCheckIdMock: vi.fn(),
+  assertUsageLimitsMock: vi.fn(),
 }))
 
 vi.mock('agents', () => ({
@@ -19,6 +21,15 @@ vi.mock('agents', () => ({
 vi.mock('./reports-db', () => ({
   getCachedReport: getCachedReportMock,
 }))
+
+vi.mock('./usage-limits', async () => {
+  const actual = await vi.importActual<typeof import('./usage-limits')>('./usage-limits')
+
+  return {
+    ...actual,
+    assertUsageLimits: assertUsageLimitsMock,
+  }
+})
 
 vi.mock('./url', () => ({
   createCheckId: createCheckIdMock,
@@ -33,6 +44,8 @@ describe('agent lookup routing retries', () => {
     getCachedReportMock.mockReset()
     normalizeStoreUrlMock.mockReset()
     createCheckIdMock.mockReset()
+    assertUsageLimitsMock.mockReset()
+    assertUsageLimitsMock.mockResolvedValue(undefined)
   })
 
   it('uses routing retries when starting a new store check', async () => {
@@ -74,6 +87,13 @@ describe('agent lookup routing retries', () => {
           maxDelayMs: 1_000,
         },
       },
+    )
+    expect(assertUsageLimitsMock).toHaveBeenCalledWith(
+      {},
+      expect.arrayContaining([
+        expect.objectContaining({ scope: 'checks:global' }),
+        expect.objectContaining({ scope: 'checks:domain:example.com' }),
+      ]),
     )
   })
 

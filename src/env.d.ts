@@ -22,8 +22,14 @@ declare namespace Cloudflare {
     CLOUDFLARE_URL_SCANNER_API_TOKEN?: string
     CLOUDFLARE_URL_SCANNER_VISIBILITY?: string
     GOOGLE_WEB_RISK_API_KEY?: string
+    MAX_AI_CALLS_PER_DAY?: string
+    MAX_CHECKS_PER_DAY?: string
+    MAX_DOMAIN_CHECKS_PER_DAY?: string
+    MAX_TAVILY_CALLS_PER_DAY?: string
+    MAX_URL_SCANNER_SUBMISSIONS_PER_DAY?: string
     TAVILY_API_KEY?: string
     URLHAUS_AUTH_KEY?: string
     TURNSTILE_SECRET_KEY?: string
+    TURNSTILE_REQUIRED?: string
   }
 }

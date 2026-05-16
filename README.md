@@ -70,6 +70,12 @@ Cloudflare configuration lives in `wrangler.jsonc`. It defines the Worker entryp
 - `AI_MODEL`
 - `CACHE_TTL_SECONDS`
 - `CLOUDFLARE_URL_SCANNER_VISIBILITY` (default: `Unlisted`)
+- `MAX_AI_CALLS_PER_DAY`
+- `MAX_CHECKS_PER_DAY`
+- `MAX_DOMAIN_CHECKS_PER_DAY`
+- `MAX_TAVILY_CALLS_PER_DAY`
+- `MAX_URL_SCANNER_SUBMISSIONS_PER_DAY`
+- `TURNSTILE_REQUIRED` (default: `true`)
 - `TURNSTILE_SITE_KEY`
 
 Secrets are configured with Wrangler:
@@ -83,9 +89,17 @@ bunx wrangler secret put CLOUDFLARE_URL_SCANNER_API_TOKEN
 bunx wrangler secret put TURNSTILE_SECRET_KEY
 ```
 
-Optional behavior:
+Launch safeguards:
 
-- Missing `TURNSTILE_SECRET_KEY` skips backend Turnstile verification.
+- `POST /api/check` is protected by Turnstile, per-IP rate limiting, and D1-backed daily circuit breakers.
+- `GET /api/check/:id` polling is protected by a separate per-IP/per-report rate limit.
+- Workers AI, Tavily, and Cloudflare URL Scanner calls are capped by D1-backed daily provider limits.
+- Cloudflare URL Scanner submissions are also capped to one submission per 10 seconds to respect scanner pacing.
+- `/api/health` verifies required production bindings, vars, and secrets. It returns `503` until every launch-critical dependency is configured.
+- Production Turnstile verification fails closed when `TURNSTILE_REQUIRED=true`; local development can still skip verification when Turnstile keys are missing.
+
+Optional provider behavior:
+
 - Missing `TAVILY_API_KEY` reduces external reputation evidence.
 - Missing `URLHAUS_AUTH_KEY` skips URLhaus malware checks.
 - Missing `GOOGLE_WEB_RISK_API_KEY` skips Google Web Risk checks.

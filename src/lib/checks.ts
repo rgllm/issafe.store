@@ -1,6 +1,12 @@
 import { getAgentByName } from 'agents'
 import { createCheckId, normalizeStoreUrl } from './url'
 import { getCachedReport } from './reports-db'
+import {
+  DAILY_WINDOW_SECONDS,
+  LAUNCH_LIMIT_DEFAULTS,
+  assertUsageLimits,
+  getConfiguredLimit,
+} from './usage-limits'
 import type { StoreSafetyReport, StoreSafetyRequest } from '../types/report'
 import type { StoreSafetyAgent } from '../agents/store-safety-agent'
 
@@ -10,6 +16,9 @@ const AGENT_ROUTING_RETRY = {
   baseDelayMs: 150,
   maxDelayMs: 1_000,
 } as const
+const AGENT_LOOKUP_OPTIONS = {
+  routingRetry: AGENT_ROUTING_RETRY,
+} as unknown as Parameters<typeof getAgentByName<Env, StoreSafetyAgent>>[2]
 
 export type StartCheckInput = {
   url: string
@@ -32,13 +41,37 @@ export async function startStoreCheck(
     return { report: cached, cached: true }
   }
 
+  await assertUsageLimits(env.DB, [
+    {
+      scope: 'checks:global',
+      windowSeconds: DAILY_WINDOW_SECONDS,
+      limit: getConfiguredLimit(
+        env.MAX_CHECKS_PER_DAY,
+        LAUNCH_LIMIT_DEFAULTS.checksPerDay,
+      ),
+      message: 'Daily public check limit reached. Try again tomorrow.',
+    },
+    {
+      scope: `checks:domain:${normalized.hostname}`,
+      windowSeconds: DAILY_WINDOW_SECONDS,
+      limit: getConfiguredLimit(
+        env.MAX_DOMAIN_CHECKS_PER_DAY,
+        LAUNCH_LIMIT_DEFAULTS.domainChecksPerDay,
+      ),
+      message:
+        'Daily check limit reached for this store. Try again tomorrow or use the cached report.',
+    },
+  ])
+
   const request: StoreSafetyRequest = {
     ...normalized,
     id,
   }
-  const agent = await getAgentByName<Env, StoreSafetyAgent>(env.StoreSafetyAgent, id, {
-    routingRetry: AGENT_ROUTING_RETRY,
-  })
+  const agent = await getAgentByName<Env, StoreSafetyAgent>(
+    env.StoreSafetyAgent,
+    id,
+    AGENT_LOOKUP_OPTIONS,
+  )
   const report = await agent.startCheck(request)
 
   return { report, cached: false }
@@ -51,9 +84,11 @@ export async function getStoreCheck(id: string, env: Env) {
     return { report: cached, cached: true }
   }
 
-  const agent = await getAgentByName<Env, StoreSafetyAgent>(env.StoreSafetyAgent, id, {
-    routingRetry: AGENT_ROUTING_RETRY,
-  })
+  const agent = await getAgentByName<Env, StoreSafetyAgent>(
+    env.StoreSafetyAgent,
+    id,
+    AGENT_LOOKUP_OPTIONS,
+  )
   const report = await agent.getCurrentReport()
 
   return report ? { report, cached: false } : null

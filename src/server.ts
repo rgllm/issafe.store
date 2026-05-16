@@ -7,6 +7,20 @@ export { StoreSafetyAgent }
 const CANONICAL_HOST = 'issafe.store'
 const WWW_HOST = `www.${CANONICAL_HOST}`
 const ONE_YEAR_SECONDS = 31_536_000
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "connect-src 'self' https://cloud.umami.is https://challenges.cloudflare.com",
+  "font-src 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "frame-src https://challenges.cloudflare.com",
+  "img-src 'self' data: https:",
+  "object-src 'none'",
+  "script-src 'self' 'unsafe-inline' https://cloud.umami.is https://challenges.cloudflare.com",
+  "style-src 'self' 'unsafe-inline'",
+  "upgrade-insecure-requests",
+].join('; ')
 
 export default {
   async fetch(request: Request, env: Env) {
@@ -68,6 +82,13 @@ function withSeoHeaders(request: Request, response: Response) {
   if (isProductionHost && url.protocol === 'https:') {
     headers.set('strict-transport-security', `max-age=${ONE_YEAR_SECONDS}; includeSubDomains`)
   }
+
+  headers.set('content-security-policy', CONTENT_SECURITY_POLICY)
+  headers.set('cross-origin-opener-policy', 'same-origin')
+  headers.set('permissions-policy', 'camera=(), geolocation=(), microphone=(), payment=(), usb=()')
+  headers.set('referrer-policy', 'strict-origin-when-cross-origin')
+  headers.set('x-content-type-options', 'nosniff')
+  headers.set('x-frame-options', 'DENY')
 
   if (response.ok && url.pathname.startsWith('/assets/')) {
     headers.set('cache-control', `public, max-age=${ONE_YEAR_SECONDS}, immutable`)
