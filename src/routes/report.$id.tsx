@@ -40,11 +40,19 @@ export const Route = createFileRoute('/report/$id')({
       },
       {
         property: 'og:image',
-        content: 'https://issafe.store/logo512.png',
+        content: 'https://issafe.store/og.png',
+      },
+      {
+        property: 'og:image:width',
+        content: '1200',
+      },
+      {
+        property: 'og:image:height',
+        content: '630',
       },
       {
         name: 'twitter:card',
-        content: 'summary',
+        content: 'summary_large_image',
       },
       {
         name: 'twitter:title',
@@ -57,7 +65,7 @@ export const Route = createFileRoute('/report/$id')({
       },
       {
         name: 'twitter:image',
-        content: 'https://issafe.store/logo512.png',
+        content: 'https://issafe.store/og.png',
       },
     ],
   }),

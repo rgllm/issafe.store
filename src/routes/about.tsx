@@ -37,11 +37,19 @@ export const Route = createFileRoute('/about')({
       },
       {
         property: 'og:image',
-        content: `${SITE_URL}/logo512.png`,
+        content: `${SITE_URL}/og.png`,
+      },
+      {
+        property: 'og:image:width',
+        content: '1200',
+      },
+      {
+        property: 'og:image:height',
+        content: '630',
       },
       {
         name: 'twitter:card',
-        content: 'summary',
+        content: 'summary_large_image',
       },
       {
         name: 'twitter:title',
@@ -53,7 +61,7 @@ export const Route = createFileRoute('/about')({
       },
       {
         name: 'twitter:image',
-        content: `${SITE_URL}/logo512.png`,
+        content: `${SITE_URL}/og.png`,
       },
       {
         'script:ld+json': {
