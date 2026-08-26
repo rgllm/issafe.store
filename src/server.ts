@@ -10,14 +10,13 @@ const ONE_YEAR_SECONDS = 31_536_000
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "base-uri 'self'",
-  "connect-src 'self' https://cloud.umami.is https://challenges.cloudflare.com",
+  "connect-src 'self' https://cloud.umami.is",
   "font-src 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  "frame-src https://challenges.cloudflare.com",
   "img-src 'self' data: https:",
   "object-src 'none'",
-  "script-src 'self' 'unsafe-inline' https://cloud.umami.is https://challenges.cloudflare.com",
+  "script-src 'self' 'unsafe-inline' https://cloud.umami.is",
   "style-src 'self' 'unsafe-inline'",
   "upgrade-insecure-requests",
 ].join('; ')

@@ -9,9 +9,8 @@ import {
   ShieldAlert,
   Star,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
-import { TurnstileWidget } from "../components/TurnstileWidget";
 import { trackStoreEvent } from "../lib/umami";
 import type { StoreSafetyReport } from "../types/report";
 
@@ -23,11 +22,6 @@ const HOME_DESCRIPTION =
 type CheckResponse = {
   report: StoreSafetyReport;
   cached: boolean;
-  turnstileSkipped?: boolean;
-};
-
-type ConfigResponse = {
-  turnstileSiteKey: string | null;
 };
 
 const SIGNALS = [
@@ -201,37 +195,8 @@ export const Route = createFileRoute("/")({
 function HomePage() {
   const navigate = useNavigate();
   const [url, setUrl] = useState("");
-  const [turnstileToken, setTurnstileToken] = useState<string | undefined>();
-  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const handleTurnstileTokenChange = useCallback(
-    (token: string | undefined) => {
-      setTurnstileToken(token);
-    },
-    [],
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    fetch("/api/config")
-      .then((response) => response.json() as Promise<ConfigResponse>)
-      .then((config) => {
-        if (!cancelled) {
-          setTurnstileSiteKey(config.turnstileSiteKey);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setTurnstileSiteKey(null);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -253,7 +218,6 @@ function HomePage() {
         },
         body: JSON.stringify({
           url: normalizedUrl,
-          turnstileToken,
         }),
       });
       const body = (await response.json()) as CheckResponse | { error: string };
@@ -334,11 +298,6 @@ function HomePage() {
                 {isSubmitting ? "Checking..." : "Check Store"}
               </button>
             </form>
-
-            <TurnstileWidget
-              siteKey={turnstileSiteKey}
-              onTokenChange={handleTurnstileTokenChange}
-            />
 
             {isSubmitting ? (
               <div className="flex flex-col gap-1 text-center">

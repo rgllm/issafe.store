@@ -24,7 +24,6 @@ Open [http://localhost:3000](http://localhost:3000).
 - **Stateful orchestration**: Cloudflare Agents and Durable Objects
 - **Persistence**: Cloudflare D1
 - **AI summary generation**: Workers AI
-- **Bot protection**: Cloudflare Turnstile
 - **External checks**: Tavily, Google Web Risk, URLhaus, OpenPhish, RDAP
 - **Testing**: Vitest and Testing Library
 - **Package manager**: Bun

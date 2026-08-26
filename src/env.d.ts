@@ -29,7 +29,5 @@ declare namespace Cloudflare {
     MAX_URL_SCANNER_SUBMISSIONS_PER_DAY?: string
     TAVILY_API_KEY?: string
     URLHAUS_AUTH_KEY?: string
-    TURNSTILE_SECRET_KEY?: string
-    TURNSTILE_REQUIRED?: string
   }
 }
