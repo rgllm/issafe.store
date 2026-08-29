@@ -19,3 +19,6 @@ todos.json
 
 .cursor/
 .vscode/
+.mcp-preview/
+.playwright-mcp/
+mcp-section-*.png

@@ -1,5 +1,6 @@
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
+import { createIsSafeMcpFetchHandler } from './agents/issafe-mcp'
 import { StoreSafetyAgent } from './agents/store-safety-agent'
 
 export { StoreSafetyAgent }
@@ -7,6 +8,7 @@ export { StoreSafetyAgent }
 const CANONICAL_HOST = 'issafe.store'
 const WWW_HOST = `www.${CANONICAL_HOST}`
 const ONE_YEAR_SECONDS = 31_536_000
+const handleMcpRequest = createIsSafeMcpFetchHandler()
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -22,11 +24,22 @@ const CONTENT_SECURITY_POLICY = [
 ].join('; ')
 
 export default {
-  async fetch(request: Request, env: Env) {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const redirectResponse = getCanonicalRedirect(request)
 
     if (redirectResponse) {
       return redirectResponse
+    }
+
+    const url = new URL(request.url)
+
+    if (url.pathname === '/mcp') {
+      const rateLimited = await limitMcpRequest(request, env)
+      if (rateLimited) {
+        return rateLimited
+      }
+
+      return handleMcpRequest(request, env, ctx)
     }
 
     const agentResponse = await routeAgentRequest(request, env)
@@ -39,6 +52,25 @@ export default {
 
     return withSeoHeaders(request, response)
   },
+}
+
+async function limitMcpRequest(request: Request, env: Env) {
+  if (request.method === 'GET' || request.method === 'HEAD' || request.method === 'OPTIONS') {
+    return null
+  }
+
+  const rateLimit = await env.MCP_RATE_LIMIT.limit({
+    key: request.headers.get('cf-connecting-ip') ?? 'anonymous',
+  })
+
+  if (rateLimit.success) {
+    return null
+  }
+
+  return Response.json(
+    { error: 'Too many MCP requests. Try again in a minute.' },
+    { status: 429 },
+  )
 }
 
 function getCanonicalRedirect(request: Request) {
