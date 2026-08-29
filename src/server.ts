@@ -1,14 +1,14 @@
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
-import { IsSafeMcp } from './agents/issafe-mcp'
+import { createIsSafeMcpFetchHandler } from './agents/issafe-mcp'
 import { StoreSafetyAgent } from './agents/store-safety-agent'
 
-export { IsSafeMcp, StoreSafetyAgent }
+export { StoreSafetyAgent }
 
 const CANONICAL_HOST = 'issafe.store'
 const WWW_HOST = `www.${CANONICAL_HOST}`
 const ONE_YEAR_SECONDS = 31_536_000
-const MCP_SERVE_OPTIONS = { binding: 'IsSafeMcp' } as const
+const handleMcpRequest = createIsSafeMcpFetchHandler()
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -33,22 +33,13 @@ export default {
 
     const url = new URL(request.url)
 
-    if (url.pathname === '/mcp' || url.pathname.startsWith('/mcp/')) {
+    if (url.pathname === '/mcp') {
       const rateLimited = await limitMcpRequest(request, env)
       if (rateLimited) {
         return rateLimited
       }
 
-      return IsSafeMcp.serve('/mcp', MCP_SERVE_OPTIONS).fetch(request, env, ctx)
-    }
-
-    if (url.pathname === '/sse' || url.pathname.startsWith('/sse/')) {
-      const rateLimited = await limitMcpRequest(request, env)
-      if (rateLimited) {
-        return rateLimited
-      }
-
-      return IsSafeMcp.serveSSE('/sse', MCP_SERVE_OPTIONS).fetch(request, env, ctx)
+      return handleMcpRequest(request, env, ctx)
     }
 
     const agentResponse = await routeAgentRequest(request, env)
