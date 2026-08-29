@@ -35,6 +35,10 @@
 			{
 				"name": "StoreSafetyAgent",
 				"class_name": "StoreSafetyAgent"
+			},
+			{
+				"name": "IsSafeMcp",
+				"class_name": "IsSafeMcp"
 			}
 		]
 	},
@@ -43,6 +47,12 @@
 			"tag": "v1",
 			"new_sqlite_classes": [
 				"StoreSafetyAgent"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"IsSafeMcp"
 			]
 		}
 	],
@@ -71,6 +81,14 @@
 			"namespace_id": "1002",
 			"simple": {
 				"limit": 60,
+				"period": 60
+			}
+		},
+		{
+			"name": "MCP_RATE_LIMIT",
+			"namespace_id": "1003",
+			"simple": {
+				"limit": 30,
 				"period": 60
 			}
 		}

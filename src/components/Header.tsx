@@ -12,6 +12,9 @@ export default function Header() {
           <a href="/#how-we-check" className="hidden no-underline transition-colors hover:text-foreground sm:inline">
             How it works
           </a>
+          <a href="/#mcp" className="hidden no-underline transition-colors hover:text-foreground sm:inline">
+            MCP
+          </a>
           <a href="/#faq" className="hidden no-underline transition-colors hover:text-foreground sm:inline">
             FAQ
           </a>

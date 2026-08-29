@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { BrandLogo } from "../components/BrandLogo";
+import { McpInstallSection } from "../components/McpInstallSection";
 import { trackStoreEvent } from "../lib/umami";
 import type { StoreSafetyReport } from "../types/report";
 
@@ -78,6 +79,11 @@ const FAQS = [
     question: "Do I need an account or purchase data?",
     answer:
       "No. You only paste a store URL. IsSafe.store does not require an account and does not use private purchase, payment, or order history.",
+  },
+  {
+    question: "Can an AI client use IsSafe.store?",
+    answer:
+      "Yes. Connect the public MCP endpoint at https://issafe.store/mcp from Cursor, Claude Desktop, Claude Code, or any MCP-compatible client. The check_store and get_report tools share the same public-signal checks and daily limits as the website.",
   },
 ];
 
@@ -381,6 +387,10 @@ function HomePage() {
           </div>
         </div>
       </section>
+
+      <div className="border-t border-border" />
+
+      <McpInstallSection />
 
       <div className="border-t border-border" />
 

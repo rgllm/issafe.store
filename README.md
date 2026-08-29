@@ -24,6 +24,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - **Stateful orchestration**: Cloudflare Agents and Durable Objects
 - **Persistence**: Cloudflare D1
 - **AI summary generation**: Workers AI
+- **Remote MCP**: public `check_store` / `get_report` tools at `/mcp`
 - **External checks**: Tavily, Google Web Risk, URLhaus, OpenPhish, RDAP
 - **Testing**: Vitest and Testing Library
 - **Package manager**: Bun
