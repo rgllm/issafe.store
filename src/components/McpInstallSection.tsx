@@ -91,11 +91,21 @@ function CopyBlock({
 
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(value)
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value)
+      } else {
+        copyWithTextarea(value)
+      }
       setCopied(true)
       window.setTimeout(() => setCopied(false), 1600)
     } catch {
-      setCopied(false)
+      try {
+        copyWithTextarea(value)
+        setCopied(true)
+        window.setTimeout(() => setCopied(false), 1600)
+      } catch {
+        setCopied(false)
+      }
     }
   }
 
@@ -124,4 +134,16 @@ function CopyBlock({
       </pre>
     </div>
   )
+}
+
+function copyWithTextarea(value: string) {
+  const textarea = document.createElement('textarea')
+  textarea.value = value
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  document.body.appendChild(textarea)
+  textarea.select()
+  document.execCommand('copy')
+  document.body.removeChild(textarea)
 }
