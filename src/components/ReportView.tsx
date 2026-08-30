@@ -140,7 +140,7 @@ export function ReportView({
             </h2>
             <ul className="m-0 mt-4 space-y-3 p-0 text-sm leading-6 text-[var(--sea-ink-soft)]">
               {[
-                'Verify reviews on independent sites, not only the store itself.',
+                'Verify reviews on independent sites, not just the store itself.',
                 'Read refund, shipping, and support policies before checkout.',
                 'Pay with a method that includes buyer protection.',
               ].map((item) => (
@@ -154,8 +154,8 @@ export function ReportView({
               ))}
             </ul>
             <p className="m-0 mt-6 border-t border-[var(--line)] pt-4 text-xs leading-5 text-[var(--sea-ink-soft)]">
-              This report is a public-signal risk assessment and cannot guarantee purchase,
-              merchant, or delivery safety.
+              This is a public-signal risk assessment and cannot guarantee
+              purchase, merchant, or delivery safety.
             </p>
           </aside>
         </div>

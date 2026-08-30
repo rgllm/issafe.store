@@ -3,7 +3,7 @@ import { createFileRoute } from '@tanstack/react-router'
 const SITE_URL = 'https://issafe.store'
 const ABOUT_TITLE = 'About IsSafe.store | Public store safety checks'
 const ABOUT_DESCRIPTION =
-  'Learn how IsSafe.store checks online stores using public reputation evidence, domain metadata, technical signals, and AI-assisted risk synthesis.'
+  'Learn how IsSafe.store checks any online store using public reputation evidence, domain metadata, technical signals, and AI-assisted risk synthesis.'
 
 export const Route = createFileRoute('/about')({
   head: () => ({
@@ -97,9 +97,9 @@ function About() {
           Use public signals to shop with more confidence.
         </h1>
         <p className="m-0 max-w-3xl text-base leading-8 text-[var(--sea-ink-soft)]">
-          IsSafe.store analyzes a store URL using visible site signals, public
+          IsSafe.store analyzes any store URL using visible site signals, public
           reputation evidence, and domain metadata. The result is a practical
-          risk assessment based on public information, not a guarantee of
+          risk assessment based on public information — not a guarantee of
           purchase safety.
         </p>
       </section>
@@ -110,9 +110,9 @@ function About() {
             Public evidence first
           </h2>
           <p className="m-0 mt-2 text-sm leading-6 text-[var(--sea-ink-soft)]">
-            Reports focus on signals a shopper can verify: reachable pages,
-            policy coverage, contact clues, domain registration data, public
-            reviews, and fraud database indicators.
+            Every report focuses on signals you can verify yourself — reachable
+            pages, policy coverage, contact clues, domain registration data,
+            public reviews, and fraud database indicators.
           </p>
         </article>
 
@@ -121,9 +121,9 @@ function About() {
             Risk, not certainty
           </h2>
           <p className="m-0 mt-2 text-sm leading-6 text-[var(--sea-ink-soft)]">
-            A clean report does not guarantee a safe purchase. It helps you spot
-            obvious warning signs before checkout and decide whether a store
-            deserves more manual review.
+            A clean report doesn't guarantee a safe purchase — but it helps you
+            spot obvious warning signs before checkout so you can decide whether
+            a store deserves a closer look.
           </p>
         </article>
 
@@ -132,9 +132,9 @@ function About() {
             Built for quick checks
           </h2>
           <p className="m-0 mt-2 text-sm leading-6 text-[var(--sea-ink-soft)]">
-            Paste a URL, review the score and cited evidence, then use normal
-            buyer protections such as credit card payments, refund policies, and
-            independent review checks.
+            Paste a URL, review the score and cited evidence, then lean on
+            normal buyer protections — credit card chargebacks, refund policies,
+            and independent review checks.
           </p>
         </article>
       </section>

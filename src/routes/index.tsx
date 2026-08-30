@@ -16,9 +16,9 @@ import { trackStoreEvent } from "../lib/umami";
 import type { StoreSafetyReport } from "../types/report";
 
 const SITE_URL = "https://issafe.store";
-const HOME_TITLE = "Is Safe Store | Scam store checker before you buy";
+const HOME_TITLE = "IsSafe.store | Check any store before you buy";
 const HOME_DESCRIPTION =
-  "Check whether an online store looks safe before checkout. Paste a store URL to get a risk score, confidence rating, recommendation, and cited public evidence.";
+  "Paste any store URL for a public-signal risk score, confidence rating, recommendation, and cited evidence — no account needed.";
 
 type CheckResponse = {
   report: StoreSafetyReport;
@@ -30,37 +30,37 @@ const SIGNALS = [
     icon: Clock,
     title: "Domain Age & History",
     description:
-      "We check when the domain was registered and whether ownership has changed hands. Newly registered domains or those with a history of transfers are a common indicator of disposable scam stores.",
+      "We check when the domain was registered and whether ownership changed hands — newly registered or frequently transferred domains are a common scam store signal.",
   },
   {
     icon: Globe,
     title: "RDAP Registration Data",
     description:
-      "Public RDAP records reveal when a domain was registered and whether the registry reports an active registration. Very new domains can be a warning sign for disposable scam stores.",
+      "Public RDAP records reveal the domain's registration date and active status. Very recent registrations are a known warning sign for disposable storefronts.",
   },
   {
     icon: Star,
     title: "Review Platform Signals",
     description:
-      "We aggregate public complaint and review data from Trustpilot, Better Business Bureau, ScamAdviser, Reddit, and similar platforms to surface patterns of non-delivery, fraud, or disputes.",
+      "We aggregate public complaint and review data from Trustpilot, BBB, ScamAdviser, Reddit, and other platforms to surface patterns of non-delivery, fraud, or disputes.",
   },
   {
     icon: ShieldAlert,
     title: "Blocklist & Fraud Databases",
     description:
-      "We cross-reference the store URL and domain against publicly maintained fraud blocklists, phishing databases, and community-reported scam registries.",
+      "We cross-reference the store URL against publicly maintained fraud blocklists, phishing databases, and community scam registries.",
   },
   {
     icon: DatabaseZap,
     title: "SSL & Technical Signals",
     description:
-      "We verify the presence, validity, and issuing authority of the store's SSL certificate. Self-signed or recently-issued certificates on new domains elevate risk.",
+      "We verify the SSL certificate's presence, validity, and issuing authority. Self-signed or recently-issued certificates on new domains raise the risk score.",
   },
   {
     icon: Bot,
     title: "AI-Powered Synthesis",
     description:
-      "All collected signals are passed to an AI model that weighs evidence, resolves conflicts between sources, and generates a calibrated risk score, confidence rating, and plain-language recommendation.",
+      "An AI model weighs all collected signals, resolves conflicts between sources, and produces a calibrated risk score, confidence rating, and plain-language recommendation.",
   },
 ];
 
@@ -68,17 +68,17 @@ const FAQS = [
   {
     question: "Can IsSafe.store guarantee a store is safe?",
     answer:
-      "No. IsSafe.store is a public-signal risk assessment. It can surface warning signs and reputation evidence, but it cannot guarantee merchant behavior, delivery, refunds, or payment safety.",
+      "No. IsSafe.store is a public-signal risk assessment. It surfaces warning signs and reputation evidence, but cannot guarantee merchant behavior, delivery, refunds, or payment safety.",
   },
   {
     question: "What signals does the store checker use?",
     answer:
-      "The checker reviews public signals such as domain registration data, site accessibility, SSL status, policy and contact signals, public reputation results, and known fraud or phishing indicators.",
+      "The checker reviews domain registration data, site accessibility, SSL status, policy and contact signals, public reputation results, and known fraud or phishing indicators.",
   },
   {
     question: "Do I need an account or purchase data?",
     answer:
-      "No. You only paste a store URL. IsSafe.store does not require an account and does not use private purchase, payment, or order history.",
+      "No. Just paste a store URL — no account needed. We never access private purchase, payment, or order history.",
   },
   {
     question: "Can an AI client use IsSafe.store?",
@@ -117,7 +117,7 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
+          "Paste any store URL for a risk score, cited evidence, and a clear recommendation — no account required.",
       },
       {
         property: "og:url",
@@ -146,7 +146,7 @@ export const Route = createFileRoute("/")({
       {
         name: "twitter:description",
         content:
-          "Paste any store URL to get a public-signal risk score, confidence rating, recommendation, and cited evidence.",
+          "Paste any store URL for a risk score, cited evidence, and a clear recommendation — no account required.",
       },
       {
         name: "twitter:image",
@@ -262,11 +262,11 @@ function HomePage() {
 
           <div className="flex flex-col gap-2">
             <h1 className="m-0 text-balance text-3xl font-semibold text-foreground">
-              Store Safety Risk Lookup
+              Check a store before you buy
             </h1>
             <p className="m-0 max-w-lg text-pretty text-base leading-7 text-muted-foreground">
-              Paste any store URL to get a risk score, confidence rating,
-              recommendation, and cited public evidence.
+              Paste any store URL for a risk score, cited evidence, and a clear
+              recommendation — no account required.
             </p>
           </div>
 
@@ -343,9 +343,9 @@ function HomePage() {
                 How We Check a Store
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-pretty text-base leading-7 text-muted-foreground">
-                This application combines structured public data sources with AI
-                synthesis to produce a single, actionable risk assessment. No
-                account required. No purchase data is used.
+                We combine public data sources with AI analysis to produce a
+                risk assessment you can act on — no account or purchase history
+                needed.
               </p>
             </div>
 
@@ -378,11 +378,11 @@ function HomePage() {
             </div>
 
             <div className="rounded-md border border-border bg-muted/50 px-5 py-3.5 text-pretty text-sm leading-6 text-muted-foreground">
-              <span className="font-semibold text-foreground">Note:</span> This
-              application relies entirely on publicly available signals. We do
-              not access private merchant data, payment records, or order
-              history. Results represent a best-effort public-signal assessment
-              and should not be the sole basis for any financial decision.
+              <span className="font-semibold text-foreground">Note:</span> We rely only on
+              publicly available signals — no private merchant data, payment
+              records, or order history. This is a best-effort public-signal
+              assessment and should not be your sole basis for any financial
+              decision.
             </div>
           </div>
         </div>
@@ -401,7 +401,7 @@ function HomePage() {
               Common Store Safety Questions
             </h2>
             <p className="mx-auto mt-2 max-w-2xl text-pretty text-base leading-7 text-muted-foreground">
-              A quick check can reduce uncertainty, but it should sit alongside
+              A quick check helps reduce uncertainty. Use it alongside your
               normal payment, refund, and merchant verification habits.
             </p>
           </div>
